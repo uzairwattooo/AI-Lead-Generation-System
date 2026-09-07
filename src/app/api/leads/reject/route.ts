@@ -1,0 +1,27 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+import { apiError, handleRouteError, requireSession } from "@/server/api";
+import { getRepositoryContext } from "@/server/data";
+
+const schema = z.object({
+  leadIds: z.array(z.string().min(1)).min(1, "Select at least one lead"),
+  reason: z.string().min(1, "A rejection reason is required"),
+  note: z.string().max(500).optional(),
+});
+
+export async function POST(request: Request) {
+  const session = await requireSession();
+  if (!session.ok) return session.response;
+  try {
+    const parsed = schema.safeParse(await request.json());
+    if (!parsed.success) return apiError("The rejection is not valid.", 422, parsed.error.issues);
+    const { reason, note, leadIds } = parsed.data;
+    const fullReason = note ? `${reason} - ${note}` : reason;
+    const { repository } = await getRepositoryContext();
+    const updated = await repository.setApproval(leadIds, "rejected", fullReason);
+    return NextResponse.json({ updated: updated.length, leads: updated });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}

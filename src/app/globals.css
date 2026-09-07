@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+/*
+ * Bind the `dark:` variant to the `.dark` class that next-themes sets on
+ * <html>. Without this, Tailwind v4 falls back to `prefers-color-scheme`,
+ * which would apply dark styles while the app is still in its light theme.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * CodeNativeX design tokens
+ * -------------------------------------------------------------------------
+ * Surface : white + soft gray          Text     : deep navy
+ * Primary : cobalt blue                Success  : teal
+ * Warning : amber                      Danger   : red (errors only)
+ */
+
+@theme {
+  --color-canvas: oklch(0.985 0.003 250);
+  --color-surface: oklch(1 0 0);
+  --color-surface-muted: oklch(0.972 0.005 250);
+
+  --color-navy-50: oklch(0.972 0.008 250);
+  --color-navy-100: oklch(0.935 0.014 250);
+  --color-navy-200: oklch(0.882 0.02 250);
+  --color-navy-300: oklch(0.79 0.028 250);
+  --color-navy-400: oklch(0.66 0.035 252);
+  --color-navy-500: oklch(0.548 0.04 254);
+  --color-navy-600: oklch(0.45 0.045 256);
+  --color-navy-700: oklch(0.372 0.048 258);
+  --color-navy-800: oklch(0.288 0.045 260);
+  --color-navy-900: oklch(0.226 0.042 262);
+  --color-navy-950: oklch(0.16 0.04 264);
+
+  --color-cobalt-50: oklch(0.968 0.021 254);
+  --color-cobalt-100: oklch(0.93 0.045 254);
+  --color-cobalt-200: oklch(0.878 0.075 254);
+  --color-cobalt-300: oklch(0.804 0.11 254);
+  --color-cobalt-400: oklch(0.71 0.15 256);
+  --color-cobalt-500: oklch(0.62 0.19 258);
+  --color-cobalt-600: oklch(0.548 0.213 260);
+  --color-cobalt-700: oklch(0.484 0.195 261);
+  --color-cobalt-800: oklch(0.418 0.16 262);
+  --color-cobalt-900: oklch(0.36 0.13 263);
+
+  --color-teal-50: oklch(0.968 0.025 185);
+  --color-teal-100: oklch(0.93 0.05 185);
+  --color-teal-500: oklch(0.7 0.115 184);
+  --color-teal-600: oklch(0.6 0.108 185);
+  --color-teal-700: oklch(0.51 0.09 186);
+
+  --color-amber-warn-50: oklch(0.973 0.035 85);
+  --color-amber-warn-100: oklch(0.94 0.07 85);
+  --color-amber-warn-500: oklch(0.79 0.15 76);
+  --color-amber-warn-600: oklch(0.69 0.155 63);
+  --color-amber-warn-700: oklch(0.58 0.14 55);
+
+  --color-danger-50: oklch(0.968 0.02 20);
+  --color-danger-100: oklch(0.93 0.04 20);
+  --color-danger-500: oklch(0.637 0.208 25);
+  --color-danger-600: oklch(0.577 0.222 27);
+  --color-danger-700: oklch(0.505 0.19 27);
+
+  --radius-card: 0.625rem;
+
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+  --shadow-overlay: 0 16px 40px -12px rgb(15 23 42 / 0.22);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Semantic aliases resolved per theme. */
+:root {
+  color-scheme: light;
+  --app-bg: var(--color-canvas);
+  --app-panel: var(--color-surface);
+  --app-panel-muted: var(--color-surface-muted);
+  --app-border: oklch(0.9 0.012 250);
+  --app-border-strong: oklch(0.84 0.018 250);
+  --app-text: var(--color-navy-900);
+  --app-text-muted: var(--color-navy-500);
+  --app-text-subtle: var(--color-navy-400);
+  --app-primary: var(--color-cobalt-600);
+  --app-primary-hover: var(--color-cobalt-700);
+  --app-primary-soft: var(--color-cobalt-50);
+  --app-ring: var(--color-cobalt-500);
+}
+
+.dark {
+  color-scheme: dark;
+  --app-bg: oklch(0.185 0.026 262);
+  --app-panel: oklch(0.225 0.03 262);
+  --app-panel-muted: oklch(0.262 0.03 262);
+  --app-border: oklch(0.32 0.03 262);
+  --app-border-strong: oklch(0.4 0.032 262);
+  --app-text: oklch(0.965 0.008 250);
+  --app-text-muted: oklch(0.75 0.02 252);
+  --app-text-subtle: oklch(0.63 0.024 252);
+  --app-primary: var(--color-cobalt-500);
+  --app-primary-hover: var(--color-cobalt-400);
+  --app-primary-soft: oklch(0.3 0.06 260);
+  --app-ring: var(--color-cobalt-400);
+}
+
+@theme inline {
+  --color-bg: var(--app-bg);
+  --color-panel: var(--app-panel);
+  --color-panel-muted: var(--app-panel-muted);
+  --color-line: var(--app-border);
+  --color-line-strong: var(--app-border-strong);
+  --color-ink: var(--app-text);
+  --color-ink-muted: var(--app-text-muted);
+  --color-ink-subtle: var(--app-text-subtle);
+  --color-primary: var(--app-primary);
+  --color-primary-hover: var(--app-primary-hover);
+  --color-primary-soft: var(--app-primary-soft);
+  --color-ring: var(--app-ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--app-border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--app-bg);
+    color: var(--app-text);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  :focus-visible {
+    outline: 2px solid var(--app-ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-cobalt-100);
+    color: var(--color-navy-900);
+  }
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-border-strong) transparent;
+}
+
+@keyframes cnx-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes cnx-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@utility animate-fade-in {
+  animation: cnx-fade-in 160ms ease-out;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--app-panel-muted);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.35),
+    transparent
+  );
+  animation: cnx-shimmer 1.4s infinite;
+}
+.dark .skeleton::after {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.06),
+    transparent
+  );
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
