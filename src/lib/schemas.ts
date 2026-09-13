@@ -1,44 +1,73 @@
 import { z } from "zod";
 
+import { DISCOVERY_SOURCE_RULES } from "@/lib/constants";
+
 const domainPattern = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 
 /**
  * Validation for the Generate Leads form. The parsed output is the exact
  * payload posted to `POST /api/lead-requests`.
  */
-export const leadSearchCriteriaSchema = z.object({
-  country: z.string().min(1, "Select a target country"),
-  region: z.string().max(120, "Region name is too long"),
-  city: z.string().max(120, "City name is too long"),
-  radiusKm: z
-    .number({ error: "Enter a search radius" })
-    .int("Use a whole number of kilometres")
-    .min(1, "Radius must be at least 1 km")
-    .max(500, "Radius cannot exceed 500 km"),
-  categories: z
-    .array(z.string().min(1))
-    .min(1, "Select at least one business category")
-    .max(8, "Select up to 8 categories"),
-  service: z.string().min(1, "Select the service to offer"),
-  leadType: z.string().min(1, "Select a lead type"),
-  requestedLeadCount: z
-    .number({ error: "Enter how many leads you need" })
-    .int("Use a whole number")
-    .min(1, "Request at least 1 lead")
-    .max(1000, "Request at most 1000 leads per run"),
-  minimumScore: z
-    .number({ error: "Enter a minimum lead score" })
-    .int("Use a whole number")
-    .min(0, "Minimum score cannot be below 0")
-    .max(100, "Minimum score cannot exceed 100"),
-  requireEmail: z.boolean(),
-  requirePhone: z.boolean(),
-  requireDecisionMaker: z.boolean(),
-  excludedDomains: z
-    .array(z.string().regex(domainPattern, "Enter a valid domain, for example competitor.com"))
-    .max(100, "Too many excluded domains"),
-  additionalInstructions: z.string().max(1000, "Keep instructions under 1000 characters"),
-});
+export const leadSearchCriteriaSchema = z
+  .object({
+    source: z.enum([
+      "google_maps",
+      "linkedin_public_search",
+      "job_platform_public_search",
+      "agency_collaboration_public_search",
+      "google_intent_public_search",
+    ], { error: "Select a lead source" }),
+    country: z.string().min(1, "Select a target country"),
+    region: z.string().max(120, "Region name is too long"),
+    city: z.string().max(120, "City name is too long"),
+    radiusKm: z
+      .number({ error: "Enter a search radius" })
+      .int("Use a whole number of kilometres")
+      .min(1, "Radius must be at least 1 km")
+      .max(500, "Radius cannot exceed 500 km"),
+    categories: z
+      .array(z.string().min(1))
+      .min(1, "Select at least one business category")
+      .max(8, "Select up to 8 categories"),
+    service: z.string().min(1, "Select the service to offer"),
+    leadType: z.string().min(1, "Select a lead type"),
+    requestedLeadCount: z
+      .number({ error: "Enter how many leads you need" })
+      .int("Use a whole number")
+      .min(1, "Request at least 1 lead")
+      .max(1000, "Request at most 1000 leads per run"),
+    minimumScore: z
+      .number({ error: "Enter a minimum lead score" })
+      .int("Use a whole number")
+      .min(0, "Minimum score cannot be below 0")
+      .max(100, "Minimum score cannot exceed 100"),
+    requireEmail: z.boolean(),
+    requirePhone: z.boolean(),
+    requireDecisionMaker: z.boolean(),
+    excludedDomains: z
+      .array(z.string().regex(domainPattern, "Enter a valid domain, for example competitor.com"))
+      .max(100, "Too many excluded domains"),
+    additionalInstructions: z.string().max(1000, "Keep instructions under 1000 characters"),
+  })
+  .superRefine((criteria, context) => {
+    const rules = DISCOVERY_SOURCE_RULES[criteria.source];
+
+    if (!(rules.leadTypes as readonly string[]).includes(criteria.leadType)) {
+      context.addIssue({
+        code: "custom",
+        path: ["leadType"],
+        message: "Select a lead type supported by the chosen source",
+      });
+    }
+
+    if (!(rules.services as readonly string[]).includes(criteria.service)) {
+      context.addIssue({
+        code: "custom",
+        path: ["service"],
+        message: "Select a service supported by the chosen source",
+      });
+    }
+  });
 
 export type LeadSearchCriteriaInput = z.input<typeof leadSearchCriteriaSchema>;
 export type LeadSearchCriteriaOutput = z.output<typeof leadSearchCriteriaSchema>;

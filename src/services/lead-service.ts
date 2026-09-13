@@ -30,8 +30,8 @@ export interface LeadListFilters {
   verification: string[];
   outreach: string[];
   approval: string[];
-  minScore: number;
-  maxScore: number;
+  minScore?: number;
+  maxScore?: number;
   sortBy: string;
   sortDir: "asc" | "desc";
 }

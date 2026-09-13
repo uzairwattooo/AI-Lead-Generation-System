@@ -27,12 +27,15 @@ import type {
   WorkspaceSettings,
 } from "@/types";
 import { PROGRESS_STAGE_LABELS } from "@/lib/constants";
+import { applyRequestLeadKeysFilter } from "./lead-pipeline-query";
 import { BackendNotConnectedError, type LeadFacets, type LeadQuery, type LeadRepository } from "./repository";
 
 export const TABLES = {
   dashboardLatest: "lead_dashboard_latest",
   requests: "lead_discovery_jobs",
   progress: "lead_discovery_jobs",
+  candidates: "lead_discovery_candidates",
+  intakeEvents: "lead_intake_events",
   leads: "lead_pipeline",
   outreach: "lead_pipeline",
   replies: "lead_reply_events",
@@ -82,46 +85,123 @@ function rowObject(value: unknown): Row {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
 }
 
+function requestCriteria(row: Row): Row {
+  const payload = rowObject(row["input_payload"]);
+  const nestedCriteria = rowObject(payload["criteria"]);
+  return Object.keys(nestedCriteria).length > 0 ? nestedCriteria : payload;
+}
+
 function rowArray(row: Row, key: string): Row[] {
   const value = row[key];
   return Array.isArray(value) ? value.map(rowObject) : [];
 }
 
-function dashboardRequestStatus(value: string): LeadSearchRequest["status"] {
+function dashboardRequestStatus(value: string, nextWorkflow = ""): LeadSearchRequest["status"] {
   const status = value.toLowerCase();
-  if (status.includes("completed")) return "completed";
   if (status.includes("failed") || status.includes("error")) return "failed";
   if (status.includes("review")) return "needs_review";
+  if (nextWorkflow && status.includes("completed")) return "running";
+  if (status.includes("completed")) return "completed";
   if (status.includes("collecting") || status.includes("running") || status.includes("preparing")) {
     return "running";
   }
   return "queued";
 }
 
+const PROGRESS_THRESHOLDS = [0, 10, 30, 40, 50, 65, 80, 90, 100] as const;
+
+function stageIndexFromPercent(percent: number): number {
+  let index = 0;
+  PROGRESS_THRESHOLDS.forEach((threshold, candidate) => {
+    if (percent >= threshold) index = candidate;
+  });
+  return Math.min(index, PROGRESS_STAGES.length - 1);
+}
+
+function stageIndexFromBackendState(currentStage: string, percent: number): number {
+  const stage = currentStage.toLowerCase();
+
+  if (stage.includes("meeting") || stage.includes("sales_handoff")) return 7;
+  if (stage.includes("reply") || stage.includes("follow_up") || stage.includes("awaiting_reply")) return 6;
+  if (stage.includes("outreach")) return 5;
+  if (stage.includes("research") || stage.includes("scoring")) return 4;
+  if (stage.includes("lead_intake") || stage.includes("data_clean")) return 3;
+  if (stage.includes("website") || stage.includes("official_domain")) return 2;
+  if (
+    stage.includes("google_maps") ||
+    stage.includes("linkedin") ||
+    stage.includes("job_platform") ||
+    stage.includes("agency_collaboration") ||
+    stage.includes("google_intent") ||
+    stage.includes("lead_discovery") ||
+    stage.includes("lead_list_ready")
+  ) {
+    return 1;
+  }
+  if (stage.includes("request")) return 0;
+
+  return stageIndexFromPercent(percent);
+}
+
+function progressForNextWorkflow(nextWorkflow: string): number | null {
+  if (nextWorkflow.startsWith("00C")) return 25;
+  if (nextWorkflow.startsWith("01")) return 40;
+  if (nextWorkflow.startsWith("02")) return 50;
+  if (nextWorkflow.startsWith("03")) return 65;
+  if (nextWorkflow.startsWith("04")) return 80;
+  if (nextWorkflow.startsWith("05")) return 90;
+  return null;
+}
+
 function mapDashboardRequest(row: Row): LeadSearchRequest {
+  const criteria = requestCriteria(row);
   const location = str(row, "location");
-  const country = str(row, "country");
+  const country = str(criteria, "country") || str(row, "country");
   const category = str(row, "category") || "Lead discovery";
   const leadsFound = num(row, "businesses_found");
   const verifiedLeads = num(row, "verified_leads");
 
   return {
     id: str(row, "job_id"),
+    source:
+      str(criteria, "source") ||
+      strArray(criteria, "sources")[0] ||
+      strArray(row, "sources")[0] ||
+      "google_maps",
     country,
-    region: "",
-    city: location !== country ? location : "",
-    radiusKm: 0,
-    categories: [category],
-    service: "Lead Discovery",
-    leadType: "business",
-    requestedLeadCount: Math.max(leadsFound, verifiedLeads),
-    minimumScore: 0,
-    requireEmail: false,
-    requirePhone: false,
-    requireDecisionMaker: false,
-    excludedDomains: [],
-    additionalInstructions: "",
-    status: dashboardRequestStatus(str(row, "status")),
+    region: str(criteria, "region") || str(criteria, "state"),
+    city: str(criteria, "city") || (location !== country ? location : ""),
+    radiusKm: num(criteria, "radiusKm", num(criteria, "radius_km", num(row, "radius_km"))),
+    categories: strArray(criteria, "categories").length
+      ? strArray(criteria, "categories")
+      : category
+        ? [category]
+        : [],
+    service:
+      str(criteria, "service") ||
+      str(criteria, "service_interest") ||
+      str(row, "service_interest") ||
+      "Lead Discovery",
+    leadType: str(criteria, "leadType") || str(criteria, "lead_type") || "business",
+    requestedLeadCount: num(
+      criteria,
+      "requestedLeadCount",
+      num(criteria, "lead_count", num(row, "requested_leads", Math.max(leadsFound, verifiedLeads))),
+    ),
+    minimumScore: num(criteria, "minimumScore", num(criteria, "minimum_score")),
+    requireEmail: bool(criteria, "requireEmail", bool(criteria, "require_email")),
+    requirePhone: bool(criteria, "requirePhone", bool(criteria, "require_phone")),
+    requireDecisionMaker: bool(
+      criteria,
+      "requireDecisionMaker",
+      bool(criteria, "require_decision_maker"),
+    ),
+    excludedDomains: strArray(criteria, "excludedDomains").length
+      ? strArray(criteria, "excludedDomains")
+      : strArray(criteria, "excluded_domains"),
+    additionalInstructions:
+      str(criteria, "additionalInstructions") || str(criteria, "additional_instructions"),
+    status: dashboardRequestStatus(str(row, "status"), str(row, "next_workflow")),
     createdAt: str(row, "requested_at"),
     startedAt: nullableStr(row, "started_at"),
     completedAt: nullableStr(row, "completed_at"),
@@ -173,32 +253,51 @@ function mapDashboardReviewActivity(row: Row): ActivityEvent {
 }
 
 function mapRequest(row: Row): LeadSearchRequest {
-  const payload = rowObject(row["input_payload"]);
-  const criteria = rowObject(payload["criteria"]);
+  const criteria = requestCriteria(row);
   const category = str(row, "category");
   const location = str(row, "location");
   const country = str(row, "country");
   return {
     id: str(row, "job_id") || str(row, "id"),
+    source:
+      str(criteria, "source") ||
+      strArray(criteria, "sources")[0] ||
+      strArray(row, "sources")[0] ||
+      "google_maps",
     country: str(criteria, "country") || country,
-    region: str(criteria, "region"),
+    region: str(criteria, "region") || str(criteria, "state"),
     city: str(criteria, "city") || (location !== country ? location : ""),
-    radiusKm: num(criteria, "radiusKm"),
+    radiusKm: num(criteria, "radiusKm", num(criteria, "radius_km", num(row, "radius_km"))),
     categories: strArray(criteria, "categories").length
       ? strArray(criteria, "categories")
       : category
         ? [category]
         : [],
-    service: str(criteria, "service") || str(row, "service_interest") || "Lead Discovery",
-    leadType: str(criteria, "leadType") || "business",
-    requestedLeadCount: num(criteria, "requestedLeadCount", num(row, "requested_leads")),
-    minimumScore: num(criteria, "minimumScore"),
-    requireEmail: bool(criteria, "requireEmail"),
-    requirePhone: bool(criteria, "requirePhone"),
-    requireDecisionMaker: bool(criteria, "requireDecisionMaker"),
-    excludedDomains: strArray(criteria, "excludedDomains"),
-    additionalInstructions: str(criteria, "additionalInstructions"),
-    status: dashboardRequestStatus(str(row, "status")),
+    service:
+      str(criteria, "service") ||
+      str(criteria, "service_interest") ||
+      str(row, "service_interest") ||
+      "Lead Discovery",
+    leadType: str(criteria, "leadType") || str(criteria, "lead_type") || "business",
+    requestedLeadCount: num(
+      criteria,
+      "requestedLeadCount",
+      num(criteria, "lead_count", num(row, "requested_leads")),
+    ),
+    minimumScore: num(criteria, "minimumScore", num(criteria, "minimum_score")),
+    requireEmail: bool(criteria, "requireEmail", bool(criteria, "require_email")),
+    requirePhone: bool(criteria, "requirePhone", bool(criteria, "require_phone")),
+    requireDecisionMaker: bool(
+      criteria,
+      "requireDecisionMaker",
+      bool(criteria, "require_decision_maker"),
+    ),
+    excludedDomains: strArray(criteria, "excludedDomains").length
+      ? strArray(criteria, "excludedDomains")
+      : strArray(criteria, "excluded_domains"),
+    additionalInstructions:
+      str(criteria, "additionalInstructions") || str(criteria, "additional_instructions"),
+    status: dashboardRequestStatus(str(row, "status"), str(row, "next_workflow")),
     createdAt: str(row, "requested_at") || str(row, "created_at"),
     startedAt: nullableStr(row, "started_at"),
     completedAt: nullableStr(row, "completed_at"),
@@ -234,7 +333,7 @@ function mapLead(row: Row): Lead {
 
   return {
     id: str(row, "id"),
-    requestId: str(row, "source_job_id") || str(row, "last_research_run_id"),
+    requestId: str(row, "job_id"),
     companyName: str(row, "company_name"),
     category: str(row, "industry") || "Uncategorized",
     country: str(row, "country"),
@@ -512,11 +611,7 @@ export class SupabaseAdapter implements LeadRepository {
 
   async createRequest(criteria: LeadSearchCriteria, createdBy: string): Promise<LeadSearchRequest> {
     const jobId = `dashboard-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-    const source = criteria.leadType.toLowerCase().includes("local")
-      ? "google_maps"
-      : criteria.leadType.toLowerCase().includes("agenc") || criteria.leadType.toLowerCase().includes("white-label")
-        ? "agency_public_search"
-        : "google_intent_public_search";
+    const source = criteria.source || "google_maps";
     const location = [criteria.city, criteria.region, criteria.country].filter(Boolean).join(", ");
     const { data, error } = await this.client
       .from(TABLES.requests)
@@ -595,25 +690,46 @@ export class SupabaseAdapter implements LeadRepository {
       .map(mapActivity)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
-    const percentComplete = num(row, "progress_percent");
-    const activeIndex = Math.min(
-      PROGRESS_STAGES.length - 1,
-      percentComplete >= 100 ? PROGRESS_STAGES.length - 1 : Math.floor(percentComplete / 10),
+    const nextWorkflow = str(row, "next_workflow");
+    const savedPercent = Math.max(0, Math.min(100, num(row, "progress_percent")));
+    const recoveredPercent = progressForNextWorkflow(nextWorkflow);
+    const percentComplete = nextWorkflow && savedPercent >= 100 && recoveredPercent !== null
+      ? recoveredPercent
+      : savedPercent;
+    const backendStage = str(row, "current_stage");
+    const backendStageIndex = stageIndexFromBackendState(backendStage, percentComplete);
+    const lastStageIndex = PROGRESS_STAGES.length - 1;
+    const terminal = !nextWorkflow && (
+      percentComplete >= 100 ||
+      ["completed", "needs_review", "failed", "cancelled"].includes(request.status)
     );
-    const stages: ProgressStage[] = PROGRESS_STAGES.map((key, index) => ({
-      key,
-      label: PROGRESS_STAGE_LABELS[key],
-      status: percentComplete >= 100 || index < activeIndex ? "completed" : index === activeIndex ? "active" : "pending",
-      startedAt: index <= activeIndex ? request.startedAt ?? request.createdAt : null,
-      completedAt: percentComplete >= 100 || index < activeIndex ? request.completedAt : null,
-      detail: index === activeIndex ? str(row, "current_stage").replaceAll("_", " ") : null,
-    }));
+    const failed = request.status === "failed";
+    const activeIndex = terminal ? lastStageIndex : backendStageIndex;
+    const stages: ProgressStage[] = PROGRESS_STAGES.map((key, index) => {
+      let status: ProgressStage["status"] = "pending";
+
+      if (terminal) {
+        if (index === lastStageIndex) status = failed ? "failed" : "completed";
+        else if (index <= backendStageIndex) status = "completed";
+        else status = "skipped";
+      } else if (index < activeIndex) status = "completed";
+      else if (index === activeIndex) status = failed ? "failed" : "active";
+
+      return {
+        key,
+        label: PROGRESS_STAGE_LABELS[key],
+        status,
+        startedAt: index <= activeIndex ? request.startedAt ?? request.createdAt : null,
+        completedAt: status === "completed" ? request.completedAt : null,
+        detail: index === activeIndex && backendStage ? backendStage.replaceAll("_", " ") : null,
+      };
+    });
 
     const startedAt = request.startedAt ?? request.createdAt;
 
     return {
       requestId: id,
-      status: request.status,
+      status: nextWorkflow && request.status === "completed" ? "running" : request.status,
       percentComplete,
       currentStage: PROGRESS_STAGES[activeIndex] as LeadSearchProgress["currentStage"],
       stages,
@@ -635,8 +751,30 @@ export class SupabaseAdapter implements LeadRepository {
   }
 
   async listLeads(query: LeadQuery): Promise<Paginated<Lead> & { facets: LeadFacets }> {
+    let requestLeadKeys: string[] | null = null;
+
+    if (query.requestId) {
+      const candidateRows = await this.rows(TABLES.candidates, (candidateQuery) =>
+        candidateQuery.select("lead_key").eq("job_id", query.requestId),
+      );
+      requestLeadKeys = [
+        ...new Set(candidateRows.map((row) => str(row, "lead_key")).filter(Boolean)),
+      ];
+
+      if (requestLeadKeys.length === 0) {
+        return {
+          items: [],
+          total: 0,
+          page: query.page,
+          pageSize: query.pageSize,
+          facets: { categories: [], locations: [] },
+        };
+      }
+    }
+
     let builder = this.client.from(TABLES.leads).select("*", { count: "exact" });
 
+    builder = applyRequestLeadKeysFilter(builder, requestLeadKeys);
     if (query.categories?.length) builder = builder.in("industry", query.categories);
     if (query.verification?.length === 1 && query.verification[0] === "verified") {
       builder = builder.in("email_validation_status", ["deliverable", "verified"]);
@@ -677,7 +815,10 @@ export class SupabaseAdapter implements LeadRepository {
 
     if (error) throw new Error(`Supabase query on "${TABLES.leads}" failed: ${error.message}`);
 
-    const facetRows = await this.rows(TABLES.leads, (q) => q.select("industry, city, country"));
+    const facetRows = await this.rows(TABLES.leads, (q) => {
+      const facetQuery = q.select("industry, city, country");
+      return applyRequestLeadKeysFilter(facetQuery, requestLeadKeys);
+    });
 
     return {
       items: (data as Row[]).map(mapLead),

@@ -26,14 +26,13 @@ export type LeadRequestStatus = (typeof LEAD_REQUEST_STATUSES)[number];
 
 export const PROGRESS_STAGES = [
   "request_queued",
-  "searching_sources",
-  "collecting_business_info",
-  "checking_websites",
-  "finding_contacts",
-  "validating_contacts",
-  "removing_duplicates",
-  "calculating_scores",
-  "saving_leads",
+  "lead_discovery",
+  "website_verification",
+  "lead_intake_cleaning",
+  "lead_research_scoring",
+  "personalized_outreach",
+  "reply_monitoring",
+  "meeting_booking",
   "finished",
 ] as const;
 export type ProgressStageKey = (typeof PROGRESS_STAGES)[number];
@@ -99,6 +98,7 @@ export type LeadPotential = "high" | "medium" | "low";
 
 /** The payload the user composes on the Generate Leads page. */
 export interface LeadSearchCriteria {
+  source?: string;
   country: string;
   region: string;
   city: string;

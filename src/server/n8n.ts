@@ -39,7 +39,7 @@ export async function dispatchToN8n(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(serverEnv.n8nWebhookSecret ? { "x-webhook-secret": serverEnv.n8nWebhookSecret } : {}),
+      ...(serverEnv.n8nWebhookSecret ? { "x-codenativex-intake-key": serverEnv.n8nWebhookSecret } : {}),
     },
     body: JSON.stringify(payload),
     cache: "no-store",

@@ -126,7 +126,7 @@ const OUTREACH_OPTIONS: OutreachStatus[] = [
 ];
 
 const SCORE_BANDS = [
-  { value: "all", label: "Any score", min: 0, max: 100 },
+  { value: "all", label: "Any score", min: undefined, max: undefined },
   { value: "high", label: "High potential (80-100)", min: 80, max: 100 },
   { value: "medium", label: "Medium potential (60-79)", min: 60, max: 79 },
   { value: "low", label: "Low potential (below 60)", min: 0, max: 59 },

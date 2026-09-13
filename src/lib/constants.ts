@@ -40,6 +40,114 @@ export const LEAD_TYPES = [
   "Businesses Posting Collaboration Opportunities",
 ] as const;
 
+export const DISCOVERY_SOURCES = [
+  { value: "google_maps", label: "Local businesses in an area" },
+  { value: "linkedin_public_search", label: "Businesses posting requirements on LinkedIn" },
+  { value: "job_platform_public_search", label: "Public client projects" },
+  { value: "agency_collaboration_public_search", label: "Agency and white-label partners" },
+  { value: "google_intent_public_search", label: "Businesses actively looking for help" },
+] as const;
+
+export type DiscoverySourceValue = (typeof DISCOVERY_SOURCES)[number]["value"];
+type LeadType = (typeof LEAD_TYPES)[number];
+type Service = (typeof SERVICES)[number];
+
+interface DiscoverySourceRule {
+  leadTypes: readonly LeadType[];
+  services: readonly Service[];
+  defaultLeadType: LeadType;
+  defaultService: Service;
+  guidance: string;
+}
+
+/**
+ * Allowed request combinations for each discovery worker. The same rules are
+ * used by the form and server validation so an invalid combination cannot be
+ * submitted by bypassing the UI.
+ */
+export const DISCOVERY_SOURCE_RULES: Record<DiscoverySourceValue, DiscoverySourceRule> = {
+  google_maps: {
+    leadTypes: ["Local Businesses", "Direct Clients", "Marketing or Design Agencies"],
+    services: ["New Website", "Website Redesign", "SEO Improvement", "Performance Optimization"],
+    defaultLeadType: "Local Businesses",
+    defaultService: "Website Redesign",
+    guidance: "Best for location-based businesses and agencies with a public business listing.",
+  },
+  linkedin_public_search: {
+    leadTypes: [
+      "Direct Clients",
+      "Marketing or Design Agencies",
+      "White-Label Partners",
+      "SaaS Companies",
+      "Companies Currently Hiring Developers",
+      "Businesses Posting Collaboration Opportunities",
+    ],
+    services: [
+      "New Website",
+      "Website Redesign",
+      "Frontend Development",
+      "MVP Development",
+      "SEO Improvement",
+      "Performance Optimization",
+      "White-Label Development Partnership",
+    ],
+    defaultLeadType: "Companies Currently Hiring Developers",
+    defaultService: "Frontend Development",
+    guidance: "Best for public requirement posts, decision-makers and companies hiring developers.",
+  },
+  job_platform_public_search: {
+    leadTypes: ["Direct Clients", "Businesses Posting Collaboration Opportunities"],
+    services: [
+      "New Website",
+      "Website Redesign",
+      "Frontend Development",
+      "MVP Development",
+      "SEO Improvement",
+      "Performance Optimization",
+    ],
+    defaultLeadType: "Direct Clients",
+    defaultService: "New Website",
+    guidance: "Best for public client projects rather than permanent employment listings.",
+  },
+  agency_collaboration_public_search: {
+    leadTypes: [
+      "Marketing or Design Agencies",
+      "White-Label Partners",
+      "Businesses Posting Collaboration Opportunities",
+    ],
+    services: [
+      "Frontend Development",
+      "MVP Development",
+      "Website Redesign",
+      "White-Label Development Partnership",
+    ],
+    defaultLeadType: "White-Label Partners",
+    defaultService: "White-Label Development Partnership",
+    guidance: "Best for agencies seeking white-label, overflow or long-term delivery partners.",
+  },
+  google_intent_public_search: {
+    leadTypes: [
+      "Direct Clients",
+      "Marketing or Design Agencies",
+      "SaaS Companies",
+      "Companies Currently Hiring Developers",
+      "Businesses Posting Collaboration Opportunities",
+    ],
+    services: [
+      "New Website",
+      "Website Redesign",
+      "Frontend Development",
+      "MVP Development",
+      "SEO Improvement",
+      "Performance Optimization",
+      "White-Label Development Partnership",
+    ],
+    defaultLeadType: "Direct Clients",
+    defaultService: "Website Redesign",
+    guidance: "Best for public pages that show an active website, software or partnership requirement.",
+  },
+};
+
 export const COUNTRIES = [
   "United States",
   "Canada",
@@ -62,28 +170,15 @@ export const COUNTRIES = [
   "India",
 ] as const;
 
-/** Optional region hints. Free text is always accepted for unlisted countries. */
-export const REGIONS_BY_COUNTRY: Record<string, readonly string[]> = {
-  "United States": ["California", "Texas", "New York", "Florida", "Illinois", "Washington", "Colorado", "Georgia"],
-  Canada: ["Ontario", "Quebec", "British Columbia", "Alberta"],
-  "United Kingdom": ["England", "Scotland", "Wales", "Northern Ireland"],
-  Germany: ["Bavaria", "Berlin", "Hesse", "North Rhine-Westphalia"],
-  Australia: ["New South Wales", "Victoria", "Queensland", "Western Australia"],
-  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah"],
-  Pakistan: ["Punjab", "Sindh", "Khyber Pakhtunkhwa", "Islamabad Capital Territory"],
-  India: ["Maharashtra", "Karnataka", "Delhi", "Tamil Nadu"],
-};
-
 export const PROGRESS_STAGE_LABELS: Record<ProgressStageKey, string> = {
   request_queued: "Request queued",
-  searching_sources: "Searching business sources",
-  collecting_business_info: "Collecting business information",
-  checking_websites: "Checking websites",
-  finding_contacts: "Finding public contact details",
-  validating_contacts: "Validating emails and phone numbers",
-  removing_duplicates: "Removing duplicates",
-  calculating_scores: "Calculating lead scores",
-  saving_leads: "Saving verified leads",
+  lead_discovery: "Lead discovery",
+  website_verification: "Website verification",
+  lead_intake_cleaning: "Lead intake and data cleaning",
+  lead_research_scoring: "Lead research and scoring",
+  personalized_outreach: "Personalized email outreach",
+  reply_monitoring: "Reply monitoring and follow-up",
+  meeting_booking: "Meeting booking and sales handoff",
   finished: "Completed or needs review",
 };
 

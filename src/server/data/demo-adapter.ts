@@ -59,11 +59,11 @@ function stageIndexForStatus(status: LeadSearchRequest["status"]): number {
     case "enriching":
       return 2;
     case "validating":
-      return 5;
+      return 3;
     case "deduplicating":
-      return 6;
+      return 3;
     case "scoring":
-      return 7;
+      return 4;
     default:
       return PROGRESS_STAGES.length - 1;
   }
