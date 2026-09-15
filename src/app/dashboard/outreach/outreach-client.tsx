@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, Mail, Send } from "lucide-react";
+import { Eye, FileDown, Mail, RefreshCw, Send } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { OutreachBadge } from "@/components/status-badges";
@@ -29,14 +29,19 @@ import {
   TableWrapper,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useApproveOutreachMessage, useOutreach } from "@/hooks/use-lead-data";
+import { useApproveOutreachMessage, useOutreach, useRegenerateEmail } from "@/hooks/use-lead-data";
 import { OUTREACH_STATUS_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import type { OutreachRecord, OutreachStatus } from "@/types";
 
 const STATUS_TABS: Array<{ value: string; label: string }> = [
   { value: "all", label: "All" },
+  { value: "email_draft_ready", label: OUTREACH_STATUS_LABELS.email_draft_ready },
+  { value: "awaiting_approval", label: OUTREACH_STATUS_LABELS.awaiting_approval },
   { value: "queued", label: OUTREACH_STATUS_LABELS.queued },
+  { value: "awaiting_reply", label: OUTREACH_STATUS_LABELS.awaiting_reply },
+  { value: "outreach_failed", label: OUTREACH_STATUS_LABELS.outreach_failed },
+  { value: "outreach_blocked", label: OUTREACH_STATUS_LABELS.outreach_blocked },
   { value: "initial_email_sent", label: OUTREACH_STATUS_LABELS.initial_email_sent },
   { value: "follow_up_1", label: OUTREACH_STATUS_LABELS.follow_up_1 },
   { value: "follow_up_2", label: OUTREACH_STATUS_LABELS.follow_up_2 },
@@ -55,6 +60,7 @@ export function OutreachClient() {
   const approveMessage = useApproveOutreachMessage();
   const [tab, setTab] = React.useState("all");
   const [preview, setPreview] = React.useState<OutreachRecord | null>(null);
+  const regenerateEmail = useRegenerateEmail(preview?.leadId ?? "");
 
   const records = (data ?? []).filter(
     (record) => tab === "all" || record.status === (tab as OutreachStatus),
@@ -106,6 +112,7 @@ export function OutreachClient() {
                   <TableHead>Company</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Audit</TableHead>
                   <TableHead>Last contacted</TableHead>
                   <TableHead>Next action</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -122,6 +129,14 @@ export function OutreachClient() {
                       <span className="flex flex-wrap items-center gap-1.5">
                         <OutreachBadge status={record.status} />
                         {record.requiresApproval ? <Badge tone="warning">Approval required</Badge> : null}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="flex flex-wrap items-center gap-1">
+                        <Badge tone={record.auditStatus === "audit_completed" ? "success" : record.auditStatus === "audit_failed" ? "danger" : record.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
+                          {record.auditStatus.replace(/_/g, " ")}
+                        </Badge>
+                        {record.auditScore !== null ? <span className="text-xs tabular-nums">{record.auditScore}</span> : null}
                       </span>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-[var(--app-text-muted)]">
@@ -153,6 +168,18 @@ export function OutreachClient() {
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-3">
+            {preview?.auditBlockReason ? (
+              <div className="rounded-md border border-amber-warn-100 bg-amber-warn-50 p-3 text-xs text-amber-warn-700 dark:border-amber-warn-700 dark:bg-amber-warn-700/20 dark:text-amber-warn-100">
+                <p className="font-semibold">Blocked reason</p>
+                <p className="mt-1">{preview.auditBlockReason}</p>
+              </div>
+            ) : null}
+            {preview?.auditReportAvailable ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--app-border)] p-3">
+                <div className="min-w-0"><p className="text-xs font-medium">{preview.auditReportFilename ?? "Website audit report"}</p><p className="text-[11px] text-[var(--app-text-muted)]">Attached when the approved email is sent.</p></div>
+                <Button asChild variant="secondary" size="sm"><a href={`/api/leads/${preview.leadId}/audit-report`} target="_blank" rel="noopener noreferrer"><FileDown aria-hidden />Preview PDF</a></Button>
+              </div>
+            ) : null}
             {preview?.messages.length === 0 ? (
               <EmptyState
                 title="No message generated yet"
@@ -191,24 +218,29 @@ export function OutreachClient() {
                 </article>
               ))
             )}
+            {preview?.gmailMessageId ? <p className="text-[11px] text-[var(--app-text-subtle)]">Gmail message {preview.gmailMessageId} · thread {preview.gmailThreadId ?? "pending"}</p> : null}
           </DialogBody>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setPreview(null)}>
               Close
             </Button>
             {preview && pendingMessage ? (
-              <Button
-                loading={approveMessage.isPending}
-                onClick={() =>
-                  approveMessage.mutate(
-                    { outreachId: preview.id, messageId: pendingMessage.id },
-                    { onSuccess: () => setPreview(null) },
-                  )
-                }
-              >
-                <Send aria-hidden />
-                Approve and send
-              </Button>
+              <>
+                <Button variant="secondary" loading={regenerateEmail.isPending} onClick={() => regenerateEmail.mutate()}><RefreshCw aria-hidden />Regenerate</Button>
+                <Button
+                  loading={approveMessage.isPending}
+                  disabled={!preview.auditReportAvailable || preview.auditStatus !== "audit_completed"}
+                  onClick={() =>
+                    approveMessage.mutate(
+                      { outreachId: preview.id, messageId: pendingMessage.id },
+                      { onSuccess: () => setPreview(null) },
+                    )
+                  }
+                >
+                  <Send aria-hidden />
+                  Approve and send
+                </Button>
+              </>
             ) : null}
           </DialogFooter>
         </DialogContent>

@@ -77,4 +77,22 @@ The live Overview page reads the latest immutable snapshot from the
 
 The browser receives dashboard totals and review summaries only. Supabase
 service-role credentials remain server-side and are never exposed to the UI.
+
+## Evidence-based website audit outreach
+
+The audit upgrade adds a strict approval-gated path without changing discovery,
+reply monitoring, or meeting booking:
+
+```text
+Approved lead -> 02A verified audit -> private branded PDF -> 03 email draft
+-> dashboard approval -> Gmail send with PDF -> 04 reply monitoring
+```
+
+Run the additive migration in
+`supabase/migrations/202609150001_evidence_based_website_audits.sql`, import the
+two workflows from `n8n/`, and configure the variables in `.env.example`.
+The workflows import inactive and contain no OpenAI/Gmail credential binding,
+so they cannot send until an administrator deliberately connects and activates
+them. See `docs/EVIDENCE_BASED_AUDIT_OUTREACH.md` for the complete
+setup and verification checklist.
 "# AI-Lead-Generation-System" 

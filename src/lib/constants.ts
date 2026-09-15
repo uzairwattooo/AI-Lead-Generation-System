@@ -198,7 +198,12 @@ export const REQUEST_STATUS_LABELS: Record<LeadRequestStatus, string> = {
 
 export const OUTREACH_STATUS_LABELS: Record<OutreachStatus, string> = {
   not_queued: "Not queued",
+  email_draft_ready: "Email draft ready",
+  awaiting_approval: "Awaiting approval",
   queued: "Queued",
+  awaiting_reply: "Awaiting reply",
+  outreach_failed: "Send failed",
+  outreach_blocked: "Blocked",
   initial_email_sent: "Initial email sent",
   follow_up_1: "Follow-up 1",
   follow_up_2: "Follow-up 2",

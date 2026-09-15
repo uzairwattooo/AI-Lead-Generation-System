@@ -97,6 +97,7 @@ const COLUMNS = [
   { key: "opportunitySignal", label: "Opportunity signal" },
   { key: "recommendedService", label: "Recommended service" },
   { key: "score", label: "Lead score", sortable: true },
+  { key: "audit", label: "Website audit" },
   { key: "verification", label: "Verification" },
   { key: "approval", label: "Approval" },
   { key: "outreach", label: "Outreach" },
@@ -111,7 +112,12 @@ const DEFAULT_HIDDEN: ColumnKey[] = ["phone", "recommendedService", "source"];
 const VERIFICATION_OPTIONS: VerificationStatus[] = ["verified", "pending", "unverified", "invalid"];
 const OUTREACH_OPTIONS: OutreachStatus[] = [
   "not_queued",
+  "email_draft_ready",
+  "awaiting_approval",
   "queued",
+  "awaiting_reply",
+  "outreach_failed",
+  "outreach_blocked",
   "initial_email_sent",
   "follow_up_1",
   "follow_up_2",
@@ -271,6 +277,7 @@ export function LeadsWorkspace({
     if (!lead.email) warnings.push("No email");
     if (!lead.phone) warnings.push("No phone");
     if (!lead.decisionMaker?.name) warnings.push("No decision maker");
+    if (lead.auditStatus === "audit_failed" || lead.auditStatus === "audit_needs_review") warnings.push("Audit needs review");
     if (typeof minimumApprovalScore === "number" && lead.score < minimumApprovalScore) {
       warnings.push(`Below the minimum score of ${minimumApprovalScore}`);
     }
@@ -491,7 +498,7 @@ export function LeadsWorkspace({
                 disabled={approvedSelected.length === 0}
               >
                 <Send aria-hidden />
-                Send to outreach
+                Prepare audit &amp; email
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
                 Clear
@@ -634,6 +641,13 @@ export function LeadsWorkspace({
                             <span className="block truncate text-xs">{lead.recommendedService}</span>
                           ) : column.key === "score" ? (
                             <ScoreBadge score={lead.score} />
+                          ) : column.key === "audit" ? (
+                            <span className="flex flex-wrap items-center gap-1">
+                              <Badge tone={lead.auditStatus === "audit_completed" ? "success" : lead.auditStatus === "audit_failed" ? "danger" : lead.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
+                                {lead.auditStatus.replace(/_/g, " ")}
+                              </Badge>
+                              {lead.auditScore !== null ? <span className="text-xs tabular-nums">{lead.auditScore}</span> : null}
+                            </span>
                           ) : column.key === "verification" ? (
                             <VerificationBadge status={lead.verificationStatus} />
                           ) : column.key === "approval" ? (
@@ -751,8 +765,8 @@ export function LeadsWorkspace({
           <DialogHeader>
             <DialogTitle>Send approved leads to outreach?</DialogTitle>
             <DialogDescription>
-              The Outreach Agent will generate a personalised first email for each lead. Only approved
-              leads are queued.
+              The agent will run a verified website audit, create a branded PDF and prepare an evidence-based
+              email draft. Sending still requires explicit email approval.
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
@@ -790,7 +804,7 @@ export function LeadsWorkspace({
               }
             >
               <Send aria-hidden />
-              Send to outreach
+              Prepare audit &amp; email
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -60,7 +60,12 @@ export function ApprovalBadge({ status }: { status: ApprovalStatus }) {
 
 const OUTREACH_TONES: Record<OutreachStatus, Tone> = {
   not_queued: "neutral",
+  email_draft_ready: "info",
+  awaiting_approval: "warning",
   queued: "neutral",
+  awaiting_reply: "info",
+  outreach_failed: "danger",
+  outreach_blocked: "danger",
   initial_email_sent: "info",
   follow_up_1: "info",
   follow_up_2: "info",

@@ -100,6 +100,18 @@ export const leadService = {
       { leadIds },
     ),
 
+  regenerateAudit: (leadId: string) =>
+    apiSend<{ queued: boolean; dispatch: { dispatched: boolean; detail: string } }>(
+      `/api/leads/${leadId}/audit/regenerate`,
+      "POST",
+    ),
+
+  regenerateEmail: (leadId: string) =>
+    apiSend<{ queued: boolean; dispatch: { dispatched: boolean; detail: string } }>(
+      `/api/leads/${leadId}/email/regenerate`,
+      "POST",
+    ),
+
   addNote: (leadId: string, body: string) =>
     apiSend<LeadNote>(`/api/leads/${leadId}/notes`, "POST", { body }),
 

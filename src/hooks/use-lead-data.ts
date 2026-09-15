@@ -163,12 +163,40 @@ export function useSendToOutreach() {
   return useMutation({
     mutationFn: (leadIds: string[]) => leadService.sendToOutreach(leadIds),
     onSuccess: (result) => {
-      toast.success(`${result.queued} lead${result.queued === 1 ? "" : "s"} sent to the Outreach Agent`, {
+      toast.success(`${result.queued} lead${result.queued === 1 ? "" : "s"} queued for audit`, {
         description: result.detail,
       });
       invalidate();
     },
     onError: (error) => toast.error("Could not send to outreach", { description: errorMessage(error) }),
+  });
+}
+
+export function useRegenerateAudit(leadId: string) {
+  const invalidate = useLeadInvalidation();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => leadService.regenerateAudit(leadId),
+    onSuccess: (result) => {
+      toast.success("Fresh website audit queued", { description: result.dispatch.detail });
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lead(leadId) });
+    },
+    onError: (error) => toast.error("Could not regenerate audit", { description: errorMessage(error) }),
+  });
+}
+
+export function useRegenerateEmail(leadId: string) {
+  const invalidate = useLeadInvalidation();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => leadService.regenerateEmail(leadId),
+    onSuccess: (result) => {
+      toast.success("Email draft regeneration queued", { description: result.dispatch.detail });
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lead(leadId) });
+    },
+    onError: (error) => toast.error("Could not regenerate email", { description: errorMessage(error) }),
   });
 }
 

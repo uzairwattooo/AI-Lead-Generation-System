@@ -25,6 +25,7 @@ import type {
   ProgressStage,
   ReplyRecord,
   WorkspaceSettings,
+  WebsiteAudit,
 } from "@/types";
 import { PROGRESS_STAGE_LABELS } from "@/lib/constants";
 import { applyRequestLeadKeysFilter } from "./lead-pipeline-query";
@@ -44,6 +45,7 @@ export const TABLES = {
   activity: "lead_dashboard_activity_feed",
   notes: "lead_notes",
   settings: "lead_workspace_settings",
+  audits: "website_audits",
 } as const;
 
 type Row = Record<string, unknown>;
@@ -79,6 +81,53 @@ function bool(row: Row, key: string, fallback = false): boolean {
 function strArray(row: Row, key: string): string[] {
   const value = row[key];
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function auditStatus(value: string): Lead["auditStatus"] {
+  const normalized = value.toLowerCase();
+  if (normalized === "audit_pending" || normalized === "audit_processing" || normalized === "audit_completed" || normalized === "audit_failed" || normalized === "audit_needs_review") return normalized;
+  return "not_started";
+}
+
+function auditFindings(row: Row, key = "audit_findings"): WebsiteAudit["findings"] {
+  const value = row[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is WebsiteAudit["findings"][number] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const record = item as Row;
+    return Boolean(str(record, "code") && str(record, "title") && str(record, "evidence"));
+  });
+}
+
+function mapAudit(row: Row): WebsiteAudit {
+  const scores = rowObject(row["scores"]);
+  const reportPath = nullableStr(row, "report_path") ?? nullableStr(row, "audit_report_url");
+  return {
+    id: str(row, "id") || str(row, "audit_id"),
+    leadId: str(row, "lead_id") || str(row, "id"),
+    status: auditStatus(str(row, "audit_status") || str(row, "status")),
+    auditedUrl: nullableStr(row, "audited_url") ?? nullableStr(row, "website"),
+    finalUrl: nullableStr(row, "final_url"),
+    httpStatus: typeof row["http_status"] === "number" ? num(row, "http_status") : null,
+    hasHttps: typeof row["has_https"] === "boolean" ? bool(row, "has_https") : null,
+    score: typeof row["audit_score"] === "number" ? num(row, "audit_score") : null,
+    confidence: typeof row["confidence"] === "number" ? num(row, "confidence") : typeof row["audit_confidence"] === "number" ? num(row, "audit_confidence") : null,
+    scores: {
+      performanceMobile: typeof scores.performanceMobile === "number" ? num(scores, "performanceMobile") : null,
+      performanceDesktop: typeof scores.performanceDesktop === "number" ? num(scores, "performanceDesktop") : null,
+      seo: typeof scores.seo === "number" ? num(scores, "seo") : null,
+      accessibility: typeof scores.accessibility === "number" ? num(scores, "accessibility") : null,
+      bestPractices: typeof scores.bestPractices === "number" ? num(scores, "bestPractices") : null,
+    },
+    findings: auditFindings(row, row["findings"] ? "findings" : "audit_findings"),
+    evidence: rowObject(row["evidence"] ?? row["audit_evidence"]),
+    screenshotUrl: nullableStr(row, "screenshot_path") ?? nullableStr(row, "website_screenshot_url"),
+    reportFilename: nullableStr(row, "report_filename") ?? nullableStr(row, "audit_report_filename"),
+    reportAvailable: Boolean(reportPath),
+    generatedAt: nullableStr(row, "generated_at") ?? nullableStr(row, "audit_generated_at"),
+    errorCode: nullableStr(row, "error_code") ?? nullableStr(row, "audit_error_code"),
+    errorMessage: nullableStr(row, "error_message") ?? nullableStr(row, "audit_error_message"),
+  };
 }
 
 function rowObject(value: unknown): Row {
@@ -330,6 +379,12 @@ function mapLead(row: Row): Lead {
   const sourceUrl = nullableStr(row, "source_url");
   const contactSourceUrl = nullableStr(row, "contact_source_url");
   const createdAt = str(row, "created_at") || str(row, "researched_at") || str(row, "updated_at");
+  const screenshotValue = nullableStr(row, "website_screenshot_url");
+  const screenshotUrl = screenshotValue
+    ? /^https?:\/\//i.test(screenshotValue)
+      ? screenshotValue
+      : `/api/leads/${str(row, "id")}/audit-screenshot`
+    : null;
 
   return {
     id: str(row, "id"),
@@ -340,7 +395,14 @@ function mapLead(row: Row): Lead {
     region: nullableStr(row, "region") ?? nullableStr(row, "state"),
     city: nullableStr(row, "city"),
     website: nullableStr(row, "website"),
-    websiteScreenshotUrl: nullableStr(row, "website_screenshot_url"),
+    websiteScreenshotUrl: screenshotUrl,
+    audit: str(row, "audit_id") ? mapAudit(row) : null,
+    auditStatus: auditStatus(str(row, "audit_status")),
+    auditScore: typeof row["audit_score"] === "number" ? num(row, "audit_score") : null,
+    auditConfidence: typeof row["audit_confidence"] === "number" ? num(row, "audit_confidence") : null,
+    auditBlockReason: nullableStr(row, "audit_error_message"),
+    emailPreviewStatus: nullableStr(row, "email_preview_status"),
+    outreachApprovedAt: nullableStr(row, "outreach_approved_at"),
     email: nullableStr(row, "email"),
     phone: nullableStr(row, "phone"),
     decisionMaker: contactName || contactRole
@@ -379,6 +441,11 @@ function normalizeOutreachStatus(value: string, replyIntent = ""): Lead["outreac
   const status = value.toLowerCase();
   const intent = replyIntent.toLowerCase();
   if (status.includes("do_not_contact") || intent === "do_not_contact") return "do_not_contact";
+  if (status.includes("blocked")) return "outreach_blocked";
+  if (status.includes("failed")) return "outreach_failed";
+  if (status.includes("awaiting_reply")) return "awaiting_reply";
+  if (status.includes("awaiting_approval")) return "awaiting_approval";
+  if (status.includes("draft_ready") || status === "draft") return "email_draft_ready";
   if (status.includes("meeting") || intent === "meeting_request") return "meeting_booked";
   if (intent === "interested" || intent === "pricing_question") return "interested";
   if (intent === "not_interested") return "not_interested";
@@ -442,6 +509,13 @@ function mapOutreach(row: Row): OutreachRecord {
     lastContactedAt: nullableStr(row, "last_outreach_at") ?? nullableStr(row, "last_follow_up_at"),
     nextActionAt: nullableStr(row, "next_follow_up_at"),
     requiresApproval: requiresCopyApproval,
+    auditStatus: auditStatus(str(row, "audit_status")),
+    auditScore: typeof row["audit_score"] === "number" ? num(row, "audit_score") : null,
+    auditReportAvailable: Boolean(nullableStr(row, "audit_report_url")),
+    auditReportFilename: nullableStr(row, "audit_report_filename"),
+    auditBlockReason: nullableStr(row, "audit_error_message") ?? nullableStr(row, "last_outreach_error"),
+    gmailMessageId: nullableStr(row, "gmail_message_id"),
+    gmailThreadId: nullableStr(row, "gmail_thread_id"),
     updatedAt: str(row, "updated_at") || str(row, "created_at"),
   };
 }
@@ -842,8 +916,18 @@ export class SupabaseAdapter implements LeadRepository {
     const notes = await this.rows(TABLES.notes, (query) =>
       query.eq("lead_id", id).order("created_at", { ascending: false }),
     );
+    let audit = lead.audit;
+    const { data: auditData, error: auditError } = await this.client
+      .from(TABLES.audits)
+      .select("*")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!auditError && auditData) audit = mapAudit(auditData as Row);
     return {
       ...lead,
+      audit,
       notes: notes.map((row) => ({
         id: str(row, "id"),
         author: str(row, "author"),
@@ -873,17 +957,28 @@ export class SupabaseAdapter implements LeadRepository {
   }
 
   async sendToOutreach(ids: string[]): Promise<OutreachRecord[]> {
+    const rows = await this.rows(TABLES.leads, (query) => query.in("id", ids));
+    const eligibleIds = rows
+      .filter((row) => str(row, "approval_status") === "approved")
+      .filter((row) => !bool(row, "do_not_contact"))
+      .filter((row) => num(row, "duplicate_count") === 0)
+      .filter((row) => !str(row, "gmail_message_id"))
+      .map((row) => str(row, "id"));
+    if (eligibleIds.length === 0) return [];
     const { data, error } = await this.client
       .from(TABLES.leads)
       .update({
-        outreach_status: "queued",
-        status: "outreach_queued",
-        next_action: "send_personalized_email",
-        next_workflow: "03 - Personalized Email Outreach",
+        audit_status: "audit_pending",
+        outreach_status: "not_started",
+        status: "audit_pending",
+        next_action: "run_verified_website_audit",
+        next_workflow: "02A - Website Audit & Branded Report Generator",
+        audit_error_code: null,
+        audit_error_message: null,
+        email_preview_status: null,
         updated_at: new Date().toISOString(),
       })
-      .in("id", ids)
-      .eq("approval_status", "approved")
+      .in("id", eligibleIds)
       .select("*");
     if (error) throw new Error(`Could not queue leads for outreach: ${error.message}`);
     return (data as Row[]).map(mapOutreach);
@@ -917,8 +1012,15 @@ export class SupabaseAdapter implements LeadRepository {
     const [sourceRow] = await this.rows(TABLES.outreach, (query) => query.eq("id", outreachId));
     const record = sourceRow ? mapOutreach(sourceRow) : null;
     if (!record) throw new BackendNotConnectedError(`outreach/${outreachId}`);
+    if (!sourceRow) throw new BackendNotConnectedError(`outreach/${outreachId}`);
     if (!record.messages.some((message) => message.id === messageId)) {
       throw new BackendNotConnectedError(`outreach/${outreachId}/messages/${messageId}`);
+    }
+    if (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url")) {
+      throw new Error("This email cannot be approved until a verified audit and PDF report are complete.");
+    }
+    if (bool(sourceRow, "do_not_contact") || num(sourceRow, "duplicate_count") > 0 || str(sourceRow, "gmail_message_id")) {
+      throw new Error("This outreach is blocked by contact safety or duplicate-send protection.");
     }
 
     const { data, error } = await this.client
@@ -929,6 +1031,8 @@ export class SupabaseAdapter implements LeadRepository {
         status: "outreach_queued",
         next_action: "send_personalized_email",
         next_workflow: "03 - Personalized Email Outreach",
+        email_preview_status: "approved",
+        outreach_approved_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         approved_by: this.userEmail,
       })

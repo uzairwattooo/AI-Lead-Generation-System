@@ -11,7 +11,13 @@ export const serverEnv = {
   n8nLeadRequestWebhookUrl: process.env.N8N_LEAD_REQUEST_WEBHOOK_URL ?? "",
   n8nLeadRequestCancelUrl: process.env.N8N_LEAD_REQUEST_CANCEL_URL ?? "",
   n8nOutreachWebhookUrl: process.env.N8N_OUTREACH_WEBHOOK_URL ?? "",
+  n8nAuditWebhookUrl: process.env.N8N_AUDIT_WEBHOOK_URL ?? "",
   n8nWebhookSecret: process.env.N8N_WEBHOOK_SECRET ?? "",
+  googlePageSpeedApiKey: process.env.GOOGLE_PAGESPEED_API_KEY ?? "",
+  auditConfidenceThreshold: Number(process.env.AUDIT_CONFIDENCE_THRESHOLD ?? "70"),
+  auditStorageBucket: process.env.AUDIT_STORAGE_BUCKET ?? "website-audit-reports",
+  meetingBookingUrl: process.env.CODENATIVEX_MEETING_URL ?? "https://calendly.com/rajaziafat3258/30min",
+  contactEmail: process.env.CODENATIVEX_CONTACT_EMAIL ?? "contact@codenativex.com",
 } as const;
 
 export function isDemoMode(): boolean {

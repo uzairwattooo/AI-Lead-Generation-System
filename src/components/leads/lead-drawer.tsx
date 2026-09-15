@@ -6,12 +6,15 @@ import {
   CheckCircle2,
   ExternalLink,
   ImageOff,
+  FileDown,
+  FileSearch,
   Mail,
   MapPin,
   Phone,
   ThumbsDown,
   ThumbsUp,
   User,
+  RefreshCw,
 } from "lucide-react";
 
 import { ApprovalBadge, OutreachBadge, ScoreBadge, VerificationBadge } from "@/components/status-badges";
@@ -22,7 +25,7 @@ import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAddNote, useLead, useOutreach } from "@/hooks/use-lead-data";
+import { useAddNote, useLead, useOutreach, useRegenerateAudit, useRegenerateEmail } from "@/hooks/use-lead-data";
 import { formatDateTime, hostnameOf } from "@/lib/format";
 import type { Lead } from "@/types";
 
@@ -43,6 +46,8 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
   const [note, setNote] = React.useState("");
   const addNote = useAddNote(lead.id);
   const outreachQuery = useOutreach();
+  const regenerateAudit = useRegenerateAudit(lead.id);
+  const regenerateEmail = useRegenerateEmail(lead.id);
   const outreachRecord = (outreachQuery.data ?? []).find((record) => record.leadId === lead.id);
 
   return (
@@ -60,6 +65,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
           <TabsList>
             <TabsTrigger value="business">Business</TabsTrigger>
             <TabsTrigger value="score">Score</TabsTrigger>
+            <TabsTrigger value="audit">Audit</TabsTrigger>
             <TabsTrigger value="verification">Verification</TabsTrigger>
             <TabsTrigger value="outreach">Outreach</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -261,6 +267,79 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
             )}
           </TabsContent>
 
+          <TabsContent value="audit" className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={lead.auditStatus === "audit_completed" ? "success" : lead.auditStatus === "audit_failed" ? "danger" : lead.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
+                {lead.auditStatus.replace(/_/g, " ")}
+              </Badge>
+              {lead.auditScore !== null ? <Badge tone="info">Audit score {lead.auditScore}</Badge> : null}
+              {lead.auditConfidence !== null ? <Badge tone="neutral">Confidence {lead.auditConfidence}%</Badge> : null}
+            </div>
+
+            {lead.auditBlockReason ? (
+              <div className="rounded-md border border-amber-warn-100 bg-amber-warn-50 p-3 text-xs text-amber-warn-700 dark:border-amber-warn-700 dark:bg-amber-warn-700/20 dark:text-amber-warn-100">
+                <p className="font-semibold">Audit or outreach blocked</p>
+                <p className="mt-1">{lead.auditBlockReason}</p>
+              </div>
+            ) : null}
+
+            {lead.audit ? (
+              <>
+                <dl className="divide-y divide-[var(--app-border)]">
+                  <DetailRow label="Final URL">{lead.audit.finalUrl ?? <NotProvided />}</DetailRow>
+                  <DetailRow label="HTTP / HTTPS">
+                    {lead.audit.httpStatus ?? "—"} · {lead.audit.hasHttps === null ? "Unknown" : lead.audit.hasHttps ? "HTTPS" : "HTTP"}
+                  </DetailRow>
+                  <DetailRow label="Generated">{formatDateTime(lead.audit.generatedAt)}</DetailRow>
+                </dl>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {[
+                    ["Mobile", lead.audit.scores.performanceMobile],
+                    ["Desktop", lead.audit.scores.performanceDesktop],
+                    ["SEO", lead.audit.scores.seo],
+                    ["Accessibility", lead.audit.scores.accessibility],
+                    ["Best practices", lead.audit.scores.bestPractices],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3">
+                      <p className="text-[11px] text-[var(--app-text-muted)]">{label}</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums">{value ?? "—"}</p>
+                    </div>
+                  ))}
+                </div>
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-subtle)]">Verified findings</h3>
+                  {lead.audit.findings.length ? (
+                    <ul className="mt-2 space-y-2">
+                      {lead.audit.findings.map((finding) => (
+                        <li key={finding.code} className="rounded-md border border-[var(--app-border)] p-3 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-semibold">{finding.title}</p>
+                            <Badge tone={finding.priority === "critical" ? "danger" : finding.priority === "high" ? "warning" : "neutral"}>{finding.priority}</Badge>
+                          </div>
+                          <p className="mt-2 text-[var(--app-text-muted)]"><span className="font-medium text-[var(--app-text)]">Evidence:</span> {finding.evidence}</p>
+                          <p className="mt-1 text-[var(--app-text-muted)]"><span className="font-medium text-[var(--app-text)]">Impact:</span> {finding.impact}</p>
+                          <p className="mt-1 text-[var(--app-text-muted)]"><span className="font-medium text-[var(--app-text)]">Recommendation:</span> {finding.recommendation}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <EmptyState title="No verified findings" description="Missing audit data is not treated as a website problem." />}
+                </section>
+              </>
+            ) : <EmptyState icon={FileSearch} title="No audit available" description="Queue this approved lead to generate a verified audit and PDF." />}
+
+            <div className="flex flex-wrap gap-2">
+              {lead.audit?.reportAvailable ? (
+                <>
+                  <Button asChild size="sm" variant="secondary"><a href={`/api/leads/${lead.id}/audit-report`} target="_blank" rel="noopener noreferrer"><FileSearch aria-hidden />Preview PDF</a></Button>
+                  <Button asChild size="sm" variant="secondary"><a href={`/api/leads/${lead.id}/audit-report?download=1`}><FileDown aria-hidden />Download PDF</a></Button>
+                </>
+              ) : null}
+              <Button size="sm" variant="secondary" loading={regenerateAudit.isPending} onClick={() => regenerateAudit.mutate()} disabled={Boolean(outreachRecord?.gmailMessageId)}>
+                <RefreshCw aria-hidden />Regenerate audit
+              </Button>
+            </div>
+          </TabsContent>
+
           <TabsContent value="verification">
             {lead.verificationHistory.length === 0 ? (
               <EmptyState title="No verification history" description="No checks have been recorded for this lead." />
@@ -314,6 +393,14 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
                     </p>
                   </article>
                 ))}
+                {outreachRecord.messages.some((message) => message.status !== "sent") ? (
+                  <Button size="sm" variant="secondary" loading={regenerateEmail.isPending} onClick={() => regenerateEmail.mutate()}>
+                    <RefreshCw aria-hidden />Regenerate email
+                  </Button>
+                ) : null}
+                {outreachRecord.gmailMessageId ? (
+                  <p className="text-[11px] text-[var(--app-text-subtle)]">Gmail message {outreachRecord.gmailMessageId} · thread {outreachRecord.gmailThreadId ?? "pending"}</p>
+                ) : null}
               </div>
             )}
           </TabsContent>

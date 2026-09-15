@@ -56,7 +56,12 @@ export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 export const OUTREACH_STATUSES = [
   "not_queued",
+  "email_draft_ready",
+  "awaiting_approval",
   "queued",
+  "awaiting_reply",
+  "outreach_failed",
+  "outreach_blocked",
   "initial_email_sent",
   "follow_up_1",
   "follow_up_2",
@@ -91,6 +96,56 @@ export const MEETING_STATUSES = [
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
 
 export type LeadPotential = "high" | "medium" | "low";
+
+export const AUDIT_STATUSES = [
+  "not_started",
+  "audit_pending",
+  "audit_processing",
+  "audit_completed",
+  "audit_failed",
+  "audit_needs_review",
+] as const;
+export type AuditStatus = (typeof AUDIT_STATUSES)[number];
+
+export type AuditPriority = "critical" | "high" | "medium" | "low";
+
+export interface AuditFinding {
+  code: string;
+  title: string;
+  priority: AuditPriority;
+  evidence: string;
+  impact: string;
+  recommendation: string;
+}
+
+export interface AuditScores {
+  performanceMobile: number | null;
+  performanceDesktop: number | null;
+  seo: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
+}
+
+export interface WebsiteAudit {
+  id: string;
+  leadId: string;
+  status: AuditStatus;
+  auditedUrl: string | null;
+  finalUrl: string | null;
+  httpStatus: number | null;
+  hasHttps: boolean | null;
+  score: number | null;
+  confidence: number | null;
+  scores: AuditScores;
+  findings: AuditFinding[];
+  evidence: Record<string, unknown>;
+  screenshotUrl: string | null;
+  reportFilename: string | null;
+  reportAvailable: boolean;
+  generatedAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Lead search request                                                        */
@@ -215,6 +270,13 @@ export interface Lead {
   city: string | null;
   website: string | null;
   websiteScreenshotUrl: string | null;
+  audit: WebsiteAudit | null;
+  auditStatus: AuditStatus;
+  auditScore: number | null;
+  auditConfidence: number | null;
+  auditBlockReason: string | null;
+  emailPreviewStatus: string | null;
+  outreachApprovedAt: string | null;
   email: string | null;
   phone: string | null;
   decisionMaker: DecisionMaker | null;
@@ -258,6 +320,13 @@ export interface OutreachRecord {
   lastContactedAt: string | null;
   nextActionAt: string | null;
   requiresApproval: boolean;
+  auditStatus: AuditStatus;
+  auditScore: number | null;
+  auditReportAvailable: boolean;
+  auditReportFilename: string | null;
+  auditBlockReason: string | null;
+  gmailMessageId: string | null;
+  gmailThreadId: string | null;
   updatedAt: string;
 }
 
