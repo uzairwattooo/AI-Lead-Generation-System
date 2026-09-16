@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { isDemoMode } from "@/server/env";
 
 export const metadata: Metadata = {
-  title: { default: "Dashboard", template: "%s | CodeNativeX" },
+  title: { default: "Dashboard", template: "%s | Code Nativex" },
   robots: { index: false, follow: false },
 };
 

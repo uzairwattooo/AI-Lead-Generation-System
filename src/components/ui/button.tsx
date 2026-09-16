@@ -8,28 +8,42 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-ring)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium",
+    // Transform is included so the press feedback below actually animates.
+    "transition-[background-color,border-color,color,box-shadow,transform] duration-150",
+    "active:translate-y-px",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-ring)]",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  ],
   {
     variants: {
       variant: {
-        primary:
-          "bg-[var(--app-primary)] text-white shadow-xs hover:bg-[var(--app-primary-hover)]",
+        // Solid variants carry a top-edge highlight and a colour-matched glow,
+        // which is what reads as a moulded control rather than a flat swatch.
+        primary: [
+          "bg-[var(--app-primary)] bg-brand-gradient text-white ring-1 ring-inset ring-white/15",
+          "shadow-(--shadow-primary)",
+          // Brightening on hover keeps the gradient rather than flattening it.
+          "hover:brightness-110 hover:shadow-(--shadow-raised)",
+        ],
         secondary:
-          "border border-[var(--app-border-strong)] bg-[var(--app-panel)] text-[var(--app-text)] shadow-xs hover:bg-[var(--app-panel-muted)]",
+          "border border-[var(--app-border-strong)] bg-[var(--app-panel)] bg-linear-to-b from-[var(--app-highlight)] to-transparent text-[var(--app-text)] shadow-(--shadow-card) hover:border-[var(--app-text-subtle)] hover:bg-[var(--app-panel-muted)]",
         ghost:
           "text-[var(--app-text-muted)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text)]",
         subtle:
           "bg-[var(--app-panel-muted)] text-[var(--app-text)] hover:bg-[var(--app-border)]",
         success:
-          "bg-teal-600 text-white shadow-xs hover:bg-teal-700",
+          "bg-linear-to-br from-teal-600 to-teal-700 text-white ring-1 ring-inset ring-white/15 shadow-(--shadow-card) hover:brightness-110 hover:shadow-(--shadow-raised)",
         danger:
-          "bg-danger-600 text-white shadow-xs hover:bg-danger-700",
+          "bg-linear-to-br from-danger-600 to-danger-700 text-white ring-1 ring-inset ring-white/15 shadow-(--shadow-card) hover:brightness-110 hover:shadow-(--shadow-raised)",
         link: "text-[var(--app-primary)] underline-offset-4 hover:underline",
       },
       size: {
         sm: "h-8 px-3 text-xs",
         md: "h-9 px-4",
-        lg: "h-10 px-5",
+        lg: "h-11 px-6 text-[15px]",
         icon: "size-9",
         "icon-sm": "size-8",
       },

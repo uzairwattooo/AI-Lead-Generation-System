@@ -8,7 +8,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * CodeNativeX design tokens
+ * Code Nativex design tokens
  * -------------------------------------------------------------------------
  * Surface : white + soft gray          Text     : deep navy
  * Primary : cobalt blue                Success  : teal
@@ -16,59 +16,94 @@
  */
 
 @theme {
-  --color-canvas: oklch(0.985 0.003 250);
+  /*
+   * Surfaces carry a slight blue cast rather than being neutral grey, so the
+   * whole canvas sits in the same colour family as the brand.
+   */
+  --color-canvas: oklch(0.974 0.012 264);
   --color-surface: oklch(1 0 0);
-  --color-surface-muted: oklch(0.972 0.005 250);
+  --color-surface-muted: oklch(0.962 0.014 264);
 
-  --color-navy-50: oklch(0.972 0.008 250);
-  --color-navy-100: oklch(0.935 0.014 250);
-  --color-navy-200: oklch(0.882 0.02 250);
-  --color-navy-300: oklch(0.79 0.028 250);
-  --color-navy-400: oklch(0.66 0.035 252);
-  --color-navy-500: oklch(0.548 0.04 254);
-  --color-navy-600: oklch(0.45 0.045 256);
-  --color-navy-700: oklch(0.372 0.048 258);
-  --color-navy-800: oklch(0.288 0.045 260);
-  --color-navy-900: oklch(0.226 0.042 262);
-  --color-navy-950: oklch(0.16 0.04 264);
+  /* Ink: a deep, saturated indigo-navy instead of a washed grey-blue. */
+  --color-navy-50: oklch(0.968 0.014 264);
+  --color-navy-100: oklch(0.928 0.026 264);
+  --color-navy-200: oklch(0.868 0.04 264);
+  --color-navy-300: oklch(0.772 0.056 265);
+  --color-navy-400: oklch(0.636 0.072 266);
+  --color-navy-500: oklch(0.518 0.086 266);
+  --color-navy-600: oklch(0.424 0.096 267);
+  --color-navy-700: oklch(0.344 0.098 268);
+  --color-navy-800: oklch(0.262 0.088 269);
+  --color-navy-900: oklch(0.196 0.076 270);
+  --color-navy-950: oklch(0.135 0.062 271);
 
-  --color-cobalt-50: oklch(0.968 0.021 254);
-  --color-cobalt-100: oklch(0.93 0.045 254);
-  --color-cobalt-200: oklch(0.878 0.075 254);
-  --color-cobalt-300: oklch(0.804 0.11 254);
-  --color-cobalt-400: oklch(0.71 0.15 256);
-  --color-cobalt-500: oklch(0.62 0.19 258);
-  --color-cobalt-600: oklch(0.548 0.213 260);
-  --color-cobalt-700: oklch(0.484 0.195 261);
-  --color-cobalt-800: oklch(0.418 0.16 262);
-  --color-cobalt-900: oklch(0.36 0.13 263);
+  /* Primary: a rich electric indigo. High chroma through the mid ramp is what
+     makes buttons, rails and gradients read as saturated rather than dusty. */
+  --color-cobalt-50: oklch(0.965 0.028 266);
+  --color-cobalt-100: oklch(0.928 0.06 266);
+  --color-cobalt-200: oklch(0.872 0.105 266);
+  --color-cobalt-300: oklch(0.788 0.152 266);
+  --color-cobalt-400: oklch(0.692 0.196 266);
+  --color-cobalt-500: oklch(0.604 0.236 267);
+  --color-cobalt-600: oklch(0.532 0.256 268);
+  --color-cobalt-700: oklch(0.464 0.238 269);
+  --color-cobalt-800: oklch(0.398 0.2 270);
+  --color-cobalt-900: oklch(0.338 0.164 271);
 
-  --color-teal-50: oklch(0.968 0.025 185);
-  --color-teal-100: oklch(0.93 0.05 185);
-  --color-teal-500: oklch(0.7 0.115 184);
-  --color-teal-600: oklch(0.6 0.108 185);
-  --color-teal-700: oklch(0.51 0.09 186);
+  /* Violet accent, used as the far stop of brand gradients. */
+  --color-violet-300: oklch(0.79 0.15 305);
+  --color-violet-400: oklch(0.7 0.2 303);
+  --color-violet-500: oklch(0.616 0.244 302);
+  --color-violet-600: oklch(0.542 0.256 301);
+  --color-violet-700: oklch(0.472 0.228 300);
 
-  --color-amber-warn-50: oklch(0.973 0.035 85);
-  --color-amber-warn-100: oklch(0.94 0.07 85);
-  --color-amber-warn-500: oklch(0.79 0.15 76);
-  --color-amber-warn-600: oklch(0.69 0.155 63);
-  --color-amber-warn-700: oklch(0.58 0.14 55);
+  /* Success: emerald-leaning teal with real saturation. */
+  --color-teal-50: oklch(0.962 0.042 178);
+  --color-teal-100: oklch(0.918 0.082 178);
+  --color-teal-200: oklch(0.858 0.112 178);
+  --color-teal-500: oklch(0.706 0.155 175);
+  --color-teal-600: oklch(0.524 0.132 177);
+  --color-teal-700: oklch(0.448 0.114 178);
 
-  --color-danger-50: oklch(0.968 0.02 20);
-  --color-danger-100: oklch(0.93 0.04 20);
-  --color-danger-500: oklch(0.637 0.208 25);
-  --color-danger-600: oklch(0.577 0.222 27);
-  --color-danger-700: oklch(0.505 0.19 27);
+  /* Warning: a deep amber that reads as gold, not beige. */
+  --color-amber-warn-50: oklch(0.968 0.052 82);
+  --color-amber-warn-100: oklch(0.928 0.11 80);
+  --color-amber-warn-500: oklch(0.72 0.182 58);
+  --color-amber-warn-600: oklch(0.612 0.184 46);
+  --color-amber-warn-700: oklch(0.508 0.158 42);
 
-  --radius-card: 0.625rem;
+  /* Danger: a saturated rose-red. */
+  --color-danger-50: oklch(0.962 0.03 17);
+  --color-danger-100: oklch(0.918 0.062 17);
+  --color-danger-500: oklch(0.63 0.234 22);
+  --color-danger-600: oklch(0.564 0.244 25);
+  --color-danger-700: oklch(0.49 0.212 26);
 
-  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-raised: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.06);
-  --shadow-overlay: 0 16px 40px -12px rgb(15 23 42 / 0.22);
+  --radius-card: 0.75rem;
+  --radius-panel: 1rem;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  /*
+   * Layered shadows: a tight contact shadow plus a wider ambient one. The pair
+   * reads as real elevation, where a single blur reads as a flat grey halo.
+   */
+  --shadow-card:
+    0 1px 1px 0 rgb(15 23 42 / 0.04),
+    0 2px 4px -1px rgb(15 23 42 / 0.05),
+    0 6px 14px -6px rgb(15 23 42 / 0.06);
+  --shadow-raised:
+    0 1px 1px 0 rgb(15 23 42 / 0.04),
+    0 4px 10px -2px rgb(15 23 42 / 0.07),
+    0 14px 28px -10px rgb(15 23 42 / 0.1);
+  --shadow-overlay:
+    0 2px 4px -1px rgb(15 23 42 / 0.06),
+    0 12px 24px -8px rgb(15 23 42 / 0.14),
+    0 28px 56px -16px rgb(15 23 42 / 0.2);
+  --shadow-primary:
+    0 1px 2px 0 rgb(15 23 42 / 0.12),
+    0 4px 12px -3px var(--app-primary-glow);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 /* Semantic aliases resolved per theme. */
@@ -77,31 +112,73 @@
   --app-bg: var(--color-canvas);
   --app-panel: var(--color-surface);
   --app-panel-muted: var(--color-surface-muted);
-  --app-border: oklch(0.9 0.012 250);
-  --app-border-strong: oklch(0.84 0.018 250);
+  --app-border: oklch(0.898 0.022 264);
+  --app-border-strong: oklch(0.83 0.036 264);
   --app-text: var(--color-navy-900);
   --app-text-muted: var(--color-navy-500);
-  --app-text-subtle: var(--color-navy-400);
+  --app-text-subtle: oklch(0.558 0.086 266);
   --app-primary: var(--color-cobalt-600);
   --app-primary-hover: var(--color-cobalt-700);
   --app-primary-soft: var(--color-cobalt-50);
   --app-ring: var(--color-cobalt-500);
+
+  /* Depth extras: a lifted surface, a hairline highlight, a coloured glow. */
+  --app-panel-raised: oklch(1 0 0);
+  --app-highlight: rgb(255 255 255 / 0.9);
+  --app-primary-glow: oklch(0.532 0.256 268 / 0.36);
+  /* The far stop of every brand gradient. */
+  --app-accent: var(--color-violet-600);
+  --app-gradient: linear-gradient(
+    135deg,
+    var(--color-cobalt-600),
+    var(--color-cobalt-700) 48%,
+    var(--color-violet-600)
+  );
+  --app-primary-ink: oklch(0.99 0 0);
+
+  /* Ambient page wash. Two faint colour fields keep large areas from reading
+     as dead grey without tinting any content sitting on top of them. */
+  --app-wash:
+    radial-gradient(58rem 34rem at 8% -10%, oklch(0.604 0.236 267 / 0.14), transparent 62%),
+    radial-gradient(46rem 30rem at 98% 2%, oklch(0.616 0.244 302 / 0.1), transparent 64%),
+    radial-gradient(52rem 34rem at 50% 108%, oklch(0.706 0.155 175 / 0.08), transparent 62%);
 }
 
 .dark {
   color-scheme: dark;
-  --app-bg: oklch(0.185 0.026 262);
-  --app-panel: oklch(0.225 0.03 262);
-  --app-panel-muted: oklch(0.262 0.03 262);
-  --app-border: oklch(0.32 0.03 262);
-  --app-border-strong: oklch(0.4 0.032 262);
-  --app-text: oklch(0.965 0.008 250);
-  --app-text-muted: oklch(0.75 0.02 252);
-  --app-text-subtle: oklch(0.63 0.024 252);
-  --app-primary: var(--color-cobalt-500);
-  --app-primary-hover: var(--color-cobalt-400);
-  --app-primary-soft: oklch(0.3 0.06 260);
+  /* Deep indigo-midnight rather than charcoal, so dark mode stays in the
+     brand's colour family instead of going neutral. */
+  --app-bg: oklch(0.163 0.042 268);
+  --app-panel: oklch(0.212 0.046 268);
+  --app-panel-muted: oklch(0.256 0.05 268);
+  --app-border: oklch(0.318 0.052 268);
+  --app-border-strong: oklch(0.402 0.058 268);
+  --app-text: oklch(0.968 0.014 264);
+  --app-text-muted: oklch(0.762 0.038 266);
+  --app-text-subtle: oklch(0.638 0.046 266);
+  /* Lighter than the fill: this token is also used for link text, icons and
+     the active nav rail, which sit on dark panels. */
+  --app-primary: var(--color-cobalt-400);
+  --app-primary-hover: var(--color-cobalt-300);
+  --app-primary-soft: oklch(0.308 0.106 268);
   --app-ring: var(--color-cobalt-400);
+
+  --app-panel-raised: oklch(0.252 0.032 262);
+  --app-highlight: rgb(255 255 255 / 0.06);
+  --app-primary-glow: oklch(0.604 0.236 267 / 0.45);
+  --app-accent: var(--color-violet-400);
+  --app-gradient: linear-gradient(
+    135deg,
+    var(--color-cobalt-600),
+    var(--color-cobalt-700) 48%,
+    var(--color-violet-600)
+  );
+  --app-primary-ink: oklch(0.145 0.03 262);
+
+  --app-wash:
+    radial-gradient(58rem 34rem at 8% -10%, oklch(0.604 0.236 267 / 0.3), transparent 62%),
+    radial-gradient(46rem 30rem at 98% 2%, oklch(0.616 0.244 302 / 0.22), transparent 64%),
+    radial-gradient(52rem 34rem at 50% 108%, oklch(0.706 0.155 175 / 0.14), transparent 62%);
 }
 
 @theme inline {
@@ -116,6 +193,8 @@
   --color-primary: var(--app-primary);
   --color-primary-hover: var(--app-primary-hover);
   --color-primary-soft: var(--app-primary-soft);
+  --color-panel-raised: var(--app-panel-raised);
+  --color-accent: var(--app-accent);
   --color-ring: var(--app-ring);
 }
 
@@ -126,22 +205,46 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
-  body {
+  html {
     background-color: var(--app-bg);
+  }
+  body {
+    background-color: transparent;
     color: var(--app-text);
     font-family: var(--font-sans);
     font-size: 0.875rem;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     overflow-x: hidden;
+  }
+  /*
+   * Ambient wash on its own fixed layer behind the content. A fixed layer is
+   * used instead of `background-attachment: fixed` on <body>, which forces the
+   * whole page into a repainted compositor layer and leaves long pages blank.
+   */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: var(--app-wash);
+  }
+  /* Headings carry the optical tightening that makes a UI feel typeset. */
+  h1, h2, h3, h4 {
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.014em;
   }
   :focus-visible {
     outline: 2px solid var(--app-ring);
     outline-offset: 2px;
+    border-radius: 0.35rem;
   }
   ::selection {
-    background: var(--color-cobalt-100);
-    color: var(--color-navy-900);
+    background: var(--color-cobalt-200);
+    color: var(--color-navy-950);
   }
 }
 
@@ -194,4 +297,64 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/*
+ * Surface utilities
+ * -------------------------------------------------------------------------
+ * `surface-raised` is the workhorse: panel colour, a hairline top highlight
+ * that mimics light catching a raised edge, and a layered shadow. Applied on
+ * cards and popovers it is what separates a "rich" panel from a bordered box.
+ */
+@utility surface-raised {
+  background-color: var(--app-panel);
+  background-image: linear-gradient(
+    to bottom,
+    var(--app-highlight),
+    transparent 46%
+  );
+  box-shadow: var(--shadow-card);
+}
+
+/* A soft brand-tinted field, for hero panels and emphasis blocks. */
+@utility surface-tinted {
+  background-image: linear-gradient(
+    145deg,
+    var(--app-primary-soft),
+    var(--app-panel) 58%
+  );
+}
+
+/* Gradient text for headline accents. */
+@utility text-gradient {
+  background-image: linear-gradient(
+    120deg,
+    var(--app-text) 18%,
+    var(--app-primary) 88%
+  );
+  background-clip: text;
+  color: transparent;
+}
+
+/* A faint dotted field used behind the marketing hero. */
+@utility bg-dot-grid {
+  background-image: radial-gradient(
+    var(--app-border-strong) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+@keyframes cnx-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@utility animate-rise-in {
+  animation: cnx-rise-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* The canonical brand gradient, for marks, chips and emphasis fills. */
+@utility bg-brand-gradient {
+  background-image: var(--app-gradient);
 }

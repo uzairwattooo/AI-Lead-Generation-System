@@ -36,7 +36,7 @@ export function ProfileMenu() {
         <div className="px-2 pb-2">
           <p className="truncate text-sm font-medium">{email || "Unknown user"}</p>
           <p className="text-[11px] text-[var(--app-text-subtle)]">
-            {demo ? "Demo workspace" : "CodeNativeX workspace"}
+            {demo ? "Demo workspace" : "Code Nativex workspace"}
           </p>
         </div>
         <DropdownMenuSeparator />

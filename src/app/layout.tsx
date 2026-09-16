@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 
 import { AuthProvider } from "@/components/providers/auth-provider";
@@ -7,10 +8,21 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
+/**
+ * Inter is loaded as a variable font and exposed as a CSS variable so the
+ * Tailwind `--font-sans` token resolves to it, with the system stack behind it
+ * as a fallback while the font loads.
+ */
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
 export const metadata: Metadata = {
   title: {
-    default: "CodeNativeX Lead Generation System",
-    template: "%s | CodeNativeX",
+    default: "Code Nativex Lead Generation System",
+    template: "%s | Code Nativex",
   },
   description:
     "Find qualified business leads with the Opportunity Hunter Agent and automate verified, approved outreach.",
@@ -25,7 +37,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body cz-shortcut-listen="true">
         <ThemeProvider>
           <QueryProvider>
