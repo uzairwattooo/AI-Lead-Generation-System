@@ -13,9 +13,7 @@ export function TableHeader({ className, ...props }: React.ComponentProps<"thead
   return (
     <thead
       className={cn(
-        // Gradient + blur so rows dissolve under the header as the body scrolls.
-        "sticky top-0 z-10 bg-[var(--app-panel-muted)]/95 backdrop-blur-sm",
-        "bg-linear-to-b from-[var(--app-panel-muted)] to-[var(--app-panel-muted)]/80",
+        "sticky top-0 z-10 bg-[var(--app-panel-muted)]",
         "[&_tr]:border-b [&_tr]:border-[var(--app-border-strong)]",
         className,
       )}
@@ -32,10 +30,8 @@ export function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
       className={cn(
-        "border-b border-[var(--app-border)] transition-colors last:border-0 hover:bg-[var(--app-panel-muted)]/70",
-        // Selected rows get a brand tint plus a left marker rule.
-        "data-[selected=true]:bg-cobalt-50/70 data-[selected=true]:shadow-[inset_2px_0_0_var(--app-primary)]",
-        "dark:data-[selected=true]:bg-cobalt-900/30",
+        "border-b border-[var(--app-border)] transition-colors last:border-0 hover:bg-[var(--app-panel-muted)]/60",
+        "data-[selected=true]:bg-cobalt-50 dark:data-[selected=true]:bg-cobalt-900/30",
         className,
       )}
       {...props}
@@ -47,7 +43,7 @@ export function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (
     <th
       className={cn(
-        "h-9 whitespace-nowrap px-3 text-left align-middle text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--app-text-muted)]",
+        "h-9 whitespace-nowrap px-3 text-left align-middle text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--app-text-muted)]",
         className,
       )}
       {...props}

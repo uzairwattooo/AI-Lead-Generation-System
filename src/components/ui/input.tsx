@@ -8,9 +8,8 @@ export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"in
         ref={ref}
         type={type}
         className={cn(
-          "flex h-9 w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-1 text-sm text-[var(--app-text)]",
-          // A faint inner shadow makes the field read as a recess to type into.
-          "shadow-[inset_0_1px_2px_rgb(15_23_42_/_0.05)] transition-[border-color,box-shadow]",
+          "flex h-9 w-full rounded-[var(--radius-control)] border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 text-[13px] text-[var(--app-text)]",
+          "transition-colors duration-150",
           "placeholder:text-[var(--app-text-subtle)]",
           "hover:border-[var(--app-text-subtle)]",
           "focus-visible:border-[var(--app-primary)] focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--app-ring)]",
@@ -30,8 +29,8 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.ComponentPro
       <textarea
         ref={ref}
         className={cn(
-          "flex min-h-20 w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-2 text-sm text-[var(--app-text)]",
-          "shadow-[inset_0_1px_2px_rgb(15_23_42_/_0.05)] transition-[border-color,box-shadow]",
+          "flex min-h-20 w-full rounded-[var(--radius-control)] border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-2 text-[13px] text-[var(--app-text)]",
+          "transition-colors duration-150",
           "placeholder:text-[var(--app-text-subtle)]",
           "hover:border-[var(--app-text-subtle)]",
           "focus-visible:border-[var(--app-primary)] focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-[var(--app-ring)]",

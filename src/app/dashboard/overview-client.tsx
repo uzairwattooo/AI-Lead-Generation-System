@@ -76,14 +76,16 @@ export function OverviewClient() {
 
       {isPending || !data ? (
         <div className="space-y-4">
-          <Skeleton className="h-[86px] w-full" />
+          {/* Matches MetricStrip's height at each breakpoint (4 / 2 / 1 rows),
+              so nothing shifts when the real figures arrive. */}
+          <Skeleton className="h-[383px] w-full sm:h-[192px] xl:h-[97px]" />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <Skeleton className="h-72 w-full xl:col-span-2" />
             <Skeleton className="h-72 w-full" />
           </div>
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-4">
           <section aria-label="Summary metrics">
             <MetricStrip metrics={metrics} />
           </section>

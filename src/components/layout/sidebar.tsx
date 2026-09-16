@@ -45,12 +45,10 @@ export function SidebarNav({
                 onClick={onNavigate}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium",
-                  "transition-[background-color,color,box-shadow] duration-150",
+                  "group relative flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-1.5 text-[13px] font-medium",
+                  "transition-colors duration-150",
                   active
-                    ? // The active row is a tinted gradient with a hairline ring,
-                      // so it reads as a lit surface rather than a grey block.
-                      "bg-linear-to-r from-[var(--app-primary-soft)] to-transparent text-[var(--app-text)] shadow-xs ring-1 ring-inset ring-[var(--app-border)]"
+                    ? "bg-[var(--app-panel-muted)] text-[var(--app-text)]"
                     : "text-[var(--app-text-muted)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text)]",
                   collapsed && "justify-center px-2",
                 )}
@@ -59,9 +57,9 @@ export function SidebarNav({
                 <span
                   aria-hidden
                   className={cn(
-                    "absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--app-primary)]",
-                    "transition-[opacity,height] duration-200",
-                    active ? "h-5 opacity-100 shadow-(--shadow-primary)" : "h-3 opacity-0",
+                    "absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[var(--app-primary)]",
+                    "transition-opacity duration-150",
+                    active ? "opacity-100" : "opacity-0",
                   )}
                 />
                 <item.icon
@@ -104,9 +102,7 @@ export function DesktopSidebar({
   return (
     <aside
       className={cn(
-        "hidden shrink-0 border-r border-[var(--app-border)] lg:sticky lg:top-0 lg:flex lg:h-dvh lg:self-start lg:flex-col",
-        // A vertical wash keeps the rail from reading as one flat slab.
-        "bg-[var(--app-panel)] bg-linear-to-b from-[var(--app-panel)] via-[var(--app-panel)] to-[var(--app-panel-muted)]/60",
+        "hidden shrink-0 border-r border-[var(--app-border)] bg-[var(--app-panel)] lg:sticky lg:top-0 lg:flex lg:h-dvh lg:self-start lg:flex-col",
         "transition-[width] duration-200",
         collapsed ? "w-16" : "w-60",
       )}

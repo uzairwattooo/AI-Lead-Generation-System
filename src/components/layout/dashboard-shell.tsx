@@ -69,9 +69,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <DesktopSidebar collapsed={collapsed} onToggle={toggleCollapsed} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Translucent so content dissolves under the bar as it scrolls away. */}
-        <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-[var(--app-panel)]/85 shadow-xs backdrop-blur-xl supports-[backdrop-filter]:bg-[var(--app-panel)]/70">
-          <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
+        <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-[var(--app-panel)]">
+          <div className="flex h-14 items-center gap-2 px-4 sm:px-6 lg:px-8">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -105,13 +104,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <ProfileMenu />
             </div>
           </div>
-          <div className="border-t border-[var(--app-border)] px-3 py-2 lg:hidden">
+          <div className="border-t border-[var(--app-border)] px-4 py-2 sm:px-6 lg:hidden">
             <Breadcrumbs />
           </div>
         </header>
 
-        <main id="main-content" className="min-w-0 flex-1 px-3 py-5 sm:px-4 sm:py-7 lg:px-7">
-          <div className="mx-auto w-full max-w-[1400px] animate-rise-in">{children}</div>
+        <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[1400px]">{children}</div>
         </main>
       </div>
 
