@@ -14,6 +14,11 @@ export const BUSINESS_CATEGORIES = [
   "Dentists",
   "Restaurants",
   "Real-Estate Agencies",
+  "Digital Agencies",
+  "Web Development Agencies",
+  "SEO Agencies",
+  "Creative Agencies",
+  "Software Companies",
   "Marketing Agencies",
   "Design Agencies",
   "SaaS Companies",
@@ -21,6 +26,7 @@ export const BUSINESS_CATEGORIES = [
 ] as const;
 
 export const SERVICES = [
+  "Web Development",
   "New Website",
   "Website Redesign",
   "Frontend Development",
@@ -83,6 +89,7 @@ export const DISCOVERY_SOURCE_RULES: Record<DiscoverySourceValue, DiscoverySourc
       "Businesses Posting Collaboration Opportunities",
     ],
     services: [
+      "Web Development",
       "New Website",
       "Website Redesign",
       "Frontend Development",
@@ -91,13 +98,14 @@ export const DISCOVERY_SOURCE_RULES: Record<DiscoverySourceValue, DiscoverySourc
       "Performance Optimization",
       "White-Label Development Partnership",
     ],
-    defaultLeadType: "Companies Currently Hiring Developers",
-    defaultService: "Frontend Development",
-    guidance: "Best for public requirement posts, decision-makers and companies hiring developers.",
+    defaultLeadType: "Direct Clients",
+    defaultService: "Website Redesign",
+    guidance: "Find public buyer requests for website services. Employment listings are excluded.",
   },
   job_platform_public_search: {
     leadTypes: ["Direct Clients", "Businesses Posting Collaboration Opportunities"],
     services: [
+      "Web Development",
       "New Website",
       "Website Redesign",
       "Frontend Development",
@@ -116,6 +124,7 @@ export const DISCOVERY_SOURCE_RULES: Record<DiscoverySourceValue, DiscoverySourc
       "Businesses Posting Collaboration Opportunities",
     ],
     services: [
+      "Web Development",
       "Frontend Development",
       "MVP Development",
       "Website Redesign",
@@ -134,6 +143,7 @@ export const DISCOVERY_SOURCE_RULES: Record<DiscoverySourceValue, DiscoverySourc
       "Businesses Posting Collaboration Opportunities",
     ],
     services: [
+      "Web Development",
       "New Website",
       "Website Redesign",
       "Frontend Development",

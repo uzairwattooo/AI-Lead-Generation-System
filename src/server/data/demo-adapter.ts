@@ -453,8 +453,7 @@ export class DemoAdapter implements LeadRepository {
               `Hello ${lead.decisionMaker?.name ?? "there"},\n\n` +
               `We reviewed ${lead.website ?? "your online presence"} and found ` +
               `${lead.websiteIssues[0]?.toLowerCase() ?? "a few opportunities to improve performance"}.\n\n` +
-              `CodeNativeX can help with ${lead.recommendedService.toLowerCase()}. Would a short call make sense?\n\n` +
-              `Best regards,\n${store.settings.senderName}`,
+              `CodeNativeX can help with ${lead.recommendedService.toLowerCase()}. Would a short call make sense?`,
             status: store.settings.requireOutreachCopyApproval ? "awaiting_approval" : "draft",
             sentAt: null,
           },

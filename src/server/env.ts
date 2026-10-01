@@ -18,6 +18,9 @@ export const serverEnv = {
   auditStorageBucket: process.env.AUDIT_STORAGE_BUCKET ?? "website-audit-reports",
   meetingBookingUrl: process.env.CODENATIVEX_MEETING_URL ?? "https://calendly.com/rajaziafat3258/30min",
   contactEmail: process.env.CODENATIVEX_CONTACT_EMAIL ?? "contact@codenativex.com",
+  logoUrl:
+    process.env.CODENATIVEX_LOGO_URL ??
+    `${process.env.NEXT_PUBLIC_SITE_URL || "https://codenativex.com"}/brand/codenativex-logo-transparent.png`,
 } as const;
 
 export function isDemoMode(): boolean {

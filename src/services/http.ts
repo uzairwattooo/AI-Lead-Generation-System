@@ -17,11 +17,16 @@ export class ApiError extends Error {
 }
 
 async function parseError(response: Response): Promise<never> {
-  let message = `The request failed with status ${response.status}.`;
+  let message = response.status === 503 ? "The service is temporarily unavailable. Please try again shortly."
+    : response.status === 502 ? "The workflow service could not be reached. Check the saved request before submitting again."
+    : response.status === 504 ? "The workflow took too long to respond. Check the request status before submitting again."
+    : `The request failed (HTTP ${response.status}).`;
   let details: unknown;
   try {
-    const body = (await response.json()) as { error?: string; details?: unknown };
-    if (body.error) message = body.error;
+    const body = (await response.json()) as { error?: string; detail?: string; message?: string; details?: unknown };
+    if (typeof body.error === "string") message = body.error;
+    else if (typeof body.detail === "string") message = body.detail;
+    else if (typeof body.message === "string") message = body.message;
     details = body.details;
   } catch {
     // Non-JSON error response; keep the generic message.

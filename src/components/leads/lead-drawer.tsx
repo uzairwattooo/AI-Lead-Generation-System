@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { ApprovalBadge, OutreachBadge, ScoreBadge, VerificationBadge } from "@/components/status-badges";
+import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
@@ -384,9 +385,12 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
                 {outreachRecord.messages.map((message) => (
                   <article key={message.id} className="rounded-md border border-[var(--app-border)] p-3">
                     <p className="text-xs font-semibold">{message.subject}</p>
-                    <p className="mt-1 whitespace-pre-line text-[11px] text-[var(--app-text-muted)]">
-                      {message.body}
-                    </p>
+                    <EmailHtmlPreview
+                      html={message.htmlBody}
+                      plainText={message.body}
+                      title={`${lead.companyName} email preview`}
+                      compact
+                    />
                     <p className="mt-2 text-[11px] text-[var(--app-text-subtle)]">
                       {message.step.replace("_", " ")} · {message.status.replace("_", " ")}
                       {message.sentAt ? ` · ${formatDateTime(message.sentAt)}` : ""}

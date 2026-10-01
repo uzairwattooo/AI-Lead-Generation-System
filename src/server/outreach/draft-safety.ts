@@ -32,7 +32,9 @@ export function validateEvidenceDraft(input: DraftValidationInput): string[] {
   if (used.size < 2 || used.size > 3) errors.push("Draft must reference exactly 2 or 3 verified findings.");
   if ([...used].some((code) => !allowed.has(code))) errors.push("Draft references a finding that was not verified.");
   if (/looking (?:for|to)|seeking (?:a )?(?:redesign|website)/i.test(input.body)) errors.push("Draft claims unverified buying intent.");
-  if (/best regards|\nbest,|code\s*nativex team/i.test(input.body)) errors.push("Draft must not include a signature or duplicate closing.");
+  if (/best regards|kind regards|warm regards|\nregards,?|\nbest,?|sincerely|code\s*nativex team/i.test(input.body)) {
+    errors.push("Draft must not include a signature or duplicate closing.");
+  }
   for (const [pattern, requiredCodes] of CLAIM_RULES) {
     if (pattern.test(`${input.subject} ${input.body}`) && !requiredCodes.some((code) => used.has(code))) {
       errors.push(`Draft contains an unsupported claim matching ${pattern.source}.`);

@@ -33,7 +33,12 @@ export async function POST(request: NextRequest) {
 
   const parsed = leadSearchCriteriaSchema.safeParse(body);
   if (!parsed.success) {
-    return apiError("The lead search request is not valid.", 422, parsed.error.issues);
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const field = String(issue.path[0] ?? "form");
+      if (!fieldErrors[field]) fieldErrors[field] = issue.message;
+    }
+    return apiError(Object.values(fieldErrors).join(" "), 422, { fieldErrors });
   }
 
   try {
@@ -53,9 +58,11 @@ export async function POST(request: NextRequest) {
           {
             request: created,
             dispatched: false,
+            error: error.message,
             detail: error.message,
+            details: { requestId: created.id, upstreamStatus: error.status },
           },
-          { status: 502 },
+          { status: error.status === 422 || error.status === 400 ? 422 : error.status === 504 ? 504 : 502 },
         );
       }
       throw error;

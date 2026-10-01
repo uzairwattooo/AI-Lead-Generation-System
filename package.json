@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "generate:sample-audit": "node --import tsx scripts/generate-sample-audit-report.ts"
+    "generate:sample-audit": "node --import tsx scripts/generate-sample-audit-report.ts",
+    "generate:sample-email": "node --import tsx scripts/generate-sample-email-template.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

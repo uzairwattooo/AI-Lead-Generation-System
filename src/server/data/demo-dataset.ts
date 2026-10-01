@@ -391,7 +391,7 @@ export function buildDemoDataset(): DemoDataset {
           `While reviewing ${lead.category.toLowerCase()} businesses in ${lead.city ?? lead.country}, we noticed ` +
           `${lead.websiteIssues[0]?.toLowerCase() ?? "a few issues on your current site"}.\n\n` +
           `CodeNativeX builds fast, accessible websites for businesses like yours. Would you be open to a short call ` +
-          `to walk through what we found?\n\nBest regards,\nThe CodeNativeX team`,
+          `to walk through what we found?`,
         status: index % 4 === 0 ? "awaiting_approval" : "sent",
         sentAt: index % 4 === 0 ? null : minutesAgo(200 - index),
       },

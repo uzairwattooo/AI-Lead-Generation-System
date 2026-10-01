@@ -61,7 +61,21 @@ export async function POST(request: Request) {
     const { data: claimed, error: claimError } = await admin.from("lead_pipeline").update({ outreach_status: "sending", outreach_send_key: sendKey, updated_at: new Date().toISOString() }).eq("id", lead.id).eq("email_preview_status", "approved").is("gmail_message_id", null).neq("outreach_status", "sending").select("id").maybeSingle();
     if (claimError) throw new Error(`Could not claim outreach send: ${claimError.message}`);
     if (!claimed) return apiError("Duplicate send prevented: this lead is already sending or sent.", 409);
-    return NextResponse.json({ mode: parsed.data.mode, leadId: lead.id, sendKey, recipientEmail: lead.email, subject: lead.outreach_subject, html: lead.outreach_html_body, plainText: lead.outreach_plain_text_body, reportFilename: lead.audit_report_filename });
+    return NextResponse.json({
+      mode: parsed.data.mode,
+      leadId: lead.id,
+      sendKey,
+      companyName: lead.company_name,
+      website: homepage.finalUrl ?? lead.website ?? null,
+      recipientEmail: lead.email,
+      subject: lead.outreach_subject,
+      html: lead.outreach_html_body,
+      plainText: lead.outreach_plain_text_body,
+      reportFilename: lead.audit_report_filename,
+      auditStatus: lead.audit_status,
+      auditScore: lead.audit_score,
+      auditConfidence: lead.audit_confidence,
+    });
   } catch (error) {
     return handleRouteError(error);
   }

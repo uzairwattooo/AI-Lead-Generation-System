@@ -464,6 +464,7 @@ function mapOutreach(row: Row): OutreachRecord {
   const leadId = str(row, "id") || str(row, "lead_id");
   const initialSubject = str(row, "outreach_subject");
   const initialBody = str(row, "outreach_body");
+  const initialHtmlBody = nullableStr(row, "outreach_html_body");
   const initialSentAt = nullableStr(row, "first_outreach_at") ?? nullableStr(row, "last_outreach_at");
   const followUpBody = str(row, "last_follow_up_body");
   const followUpCount = num(row, "follow_up_count");
@@ -478,6 +479,7 @@ function mapOutreach(row: Row): OutreachRecord {
       step: "initial",
       subject: initialSubject,
       body: initialBody,
+      htmlBody: initialHtmlBody,
       status: initialSentAt || str(row, "gmail_message_id")
         ? "sent"
         : requiresCopyApproval
@@ -494,6 +496,7 @@ function mapOutreach(row: Row): OutreachRecord {
       step: `follow_up_${step}` as "follow_up_1" | "follow_up_2" | "follow_up_3",
       subject: initialSubject ? `Re: ${initialSubject}` : "Follow-up",
       body: followUpBody,
+      htmlBody: null,
       status: nullableStr(row, "last_follow_up_at") ? "sent" : "draft",
       sentAt: nullableStr(row, "last_follow_up_at"),
     });

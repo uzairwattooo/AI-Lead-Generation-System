@@ -306,6 +306,7 @@ export interface OutreachMessage {
   step: "initial" | "follow_up_1" | "follow_up_2" | "follow_up_3";
   subject: string;
   body: string;
+  htmlBody?: string | null;
   status: "draft" | "awaiting_approval" | "sent" | "failed";
   sentAt: string | null;
 }

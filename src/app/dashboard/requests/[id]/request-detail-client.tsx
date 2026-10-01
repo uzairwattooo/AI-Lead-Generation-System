@@ -104,12 +104,19 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
         : progress.status === "completed"
           ? "success"
           : "primary";
+  const isLinkedIn = request.source === "linkedin_public_search";
 
+  const leadTypeLabel = isLinkedIn
+    ? "Businesses seeking website services"
+    : request.leadType;
   const stats = [
     { label: "Sources checked", value: progress.sourcesChecked },
     { label: "Businesses discovered", value: progress.businessesDiscovered },
     { label: "Duplicates removed", value: progress.duplicatesRemoved },
-    { label: "Invalid contacts rejected", value: progress.invalidContactsRejected },
+    {
+  label: isLinkedIn ? "Signals rejected" : "Invalid contacts rejected",
+  value: progress.invalidContactsRejected,
+},
     { label: "Verified leads", value: progress.verifiedLeads },
     { label: "High-potential leads", value: progress.highPotentialLeads },
   ];
@@ -118,7 +125,7 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
     <>
       <PageHeader
         title={`${request.categories.join(", ")} in ${request.city || request.region || request.country}`}
-        description={`${request.service} · ${request.leadType} · ${request.radiusKm} km radius · Request ${request.id}`}
+        description={`${request.service} · ${leadTypeLabel}${isLinkedIn ? "" : ` · ${request.radiusKm} km radius`} · Request ${request.id}`}
         actions={
           <>
             {progress.verifiedLeads > 0 || isTerminal ? (

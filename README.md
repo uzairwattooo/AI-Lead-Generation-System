@@ -1,4 +1,4 @@
-# CodeNativeX Lead Generation System — Frontend
+# CodeNativeX AI Lead Generation Platform
 
 A production-quality Next.js frontend for the CodeNativeX lead pipeline:
 
@@ -13,6 +13,14 @@ Lead Search Request → Opportunity Hunter → Business Analysis → Contact Ver
 Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 ·
 Radix primitives in the shadcn/ui style · Lucide icons · TanStack Query ·
 React Hook Form + Zod · Supabase Auth · Sonner toasts.
+
+## CodeNativeX interface
+
+The interface uses the official transparent CodeNativeX logo and a responsive
+dark engineering theme inspired by the public company website. Shared design
+tokens in `src/app/globals.css` drive the landing page, authentication,
+dashboard navigation, forms, tables, drawers, dialogs and status surfaces.
+Switching themes remains available from the account menu.
 
 ## Getting started
 

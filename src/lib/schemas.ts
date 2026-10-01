@@ -17,9 +17,9 @@ export const leadSearchCriteriaSchema = z
       "agency_collaboration_public_search",
       "google_intent_public_search",
     ], { error: "Select a lead source" }),
-    country: z.string().min(1, "Select a target country"),
-    region: z.string().max(120, "Region name is too long"),
-    city: z.string().max(120, "City name is too long"),
+    country: z.string().trim().min(1, "Select a target country"),
+    region: z.string().trim().max(120, "Region name is too long"),
+    city: z.string().trim().max(120, "City name is too long"),
     radiusKm: z
       .number({ error: "Enter a search radius" })
       .int("Use a whole number of kilometres")
@@ -51,6 +51,9 @@ export const leadSearchCriteriaSchema = z
   })
   .superRefine((criteria, context) => {
     const rules = DISCOVERY_SOURCE_RULES[criteria.source];
+    if (criteria.source === "google_maps" && criteria.city.length < 2 && criteria.region.length < 2) {
+      context.addIssue({ code: "custom", path: ["city"], message: "Google Maps needs a city/area or a state/region. Enter at least one." });
+    }
 
     if (!(rules.leadTypes as readonly string[]).includes(criteria.leadType)) {
       context.addIssue({

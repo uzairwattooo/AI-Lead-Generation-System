@@ -4,6 +4,7 @@ import * as React from "react";
 import { Eye, FileDown, Mail, RefreshCw, Send } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { OutreachBadge } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -207,9 +208,11 @@ export function OutreachClient() {
                     </Badge>
                   </div>
                   <p className="mt-2 text-sm font-medium">{message.subject}</p>
-                  <p className="mt-2 whitespace-pre-line text-xs text-[var(--app-text-muted)]">
-                    {message.body}
-                  </p>
+                  <EmailHtmlPreview
+                    html={message.htmlBody}
+                    plainText={message.body}
+                    title={`${preview.companyName} email preview`}
+                  />
                   {message.sentAt ? (
                     <p className="mt-2 text-[11px] text-[var(--app-text-subtle)]">
                       Sent {formatDateTime(message.sentAt)}
