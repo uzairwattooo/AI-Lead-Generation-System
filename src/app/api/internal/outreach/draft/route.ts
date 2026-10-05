@@ -8,7 +8,7 @@ import { renderProfessionalEmail } from "@/server/outreach/email-template";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import type { AuditFinding, AuditScores } from "@/types";
 
-const schema = z.object({ leadId: z.string().uuid(), subject: z.string().min(1), body: z.string().min(1), findingCodes: z.array(z.string()).min(2).max(3) });
+const schema = z.object({ leadId: z.string().uuid(), subject: z.string().min(1), body: z.string().min(1), findingCodes: z.array(z.string()).min(1).max(2) });
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};

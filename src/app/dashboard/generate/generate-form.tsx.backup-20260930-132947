@@ -1,0 +1,601 @@
+"use client";
+
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { Controller, useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { AlertCircle, Rocket, Settings2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, ToggleRow } from "@/components/ui/field";
+import { Input, Textarea } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { TagInput } from "@/components/ui/tag-input";
+import {
+  BUSINESS_CATEGORIES,
+  COUNTRIES,
+  DISCOVERY_SOURCES,
+  DISCOVERY_SOURCE_RULES,
+} from "@/lib/constants";
+import type { DiscoverySourceValue } from "@/lib/constants";
+import { getCities, getRegions } from "@/lib/locations";
+import { leadSearchCriteriaSchema, type LeadSearchCriteriaOutput } from "@/lib/schemas";
+import { leadService } from "@/services/lead-service";
+import { errorMessage } from "@/hooks/use-lead-data";
+import type { LeadSearchCriteria } from "@/types";
+
+const DEFAULT_VALUES: LeadSearchCriteriaOutput = {
+  source: "google_maps",
+  country: "United States",
+  region: "",
+  city: "",
+  radiusKm: 15,
+  categories: [],
+  service: DISCOVERY_SOURCE_RULES.google_maps.defaultService,
+  leadType: DISCOVERY_SOURCE_RULES.google_maps.defaultLeadType,
+  requestedLeadCount: 25,
+  minimumScore: 80,
+  requireEmail: true,
+  requirePhone: false,
+  requireDecisionMaker: false,
+  excludedDomains: [],
+  additionalInstructions: "",
+};
+
+export function GenerateLeadsForm() {
+  const router = useRouter();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [pendingValues, setPendingValues] = React.useState<LeadSearchCriteria | null>(null);
+
+  const {
+    control,
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors },
+  } = useForm<LeadSearchCriteriaOutput>({
+    resolver: zodResolver(leadSearchCriteriaSchema),
+    defaultValues: DEFAULT_VALUES,
+    mode: "onBlur",
+  });
+
+  // useWatch keeps the live request summary in sync without breaking memoization.
+  const values = useWatch({ control, defaultValue: DEFAULT_VALUES }) as LeadSearchCriteriaOutput;
+  const regionOptions = getRegions(values.country);
+  const cityOptions = getCities(values.country, values.region);
+  const sourceRules = DISCOVERY_SOURCE_RULES[values.source];
+  const selectedSource =
+    DISCOVERY_SOURCES.find((source) => source.value === values.source)?.label ?? "Not selected";
+
+  const mutation = useMutation({
+    mutationFn: (criteria: LeadSearchCriteria) => leadService.createRequest(criteria),
+    onSuccess: (result) => {
+      setConfirmOpen(false);
+      toast.success("Lead generation started", {
+        description: result.dispatched
+          ? result.detail
+          : "The request was recorded. Connect the n8n webhook to trigger the agent.",
+      });
+      router.push(`/dashboard/requests/${result.request.id}`);
+    },
+    onError: (error) =>
+      toast.error("The lead search could not be started", { description: errorMessage(error) }),
+  });
+
+  const onSubmit = handleSubmit((formValues: LeadSearchCriteriaOutput) => {
+    setPendingValues(formValues);
+    setConfirmOpen(true);
+  });
+
+  const summaryRows: Array<{ label: string; value: string }> = [
+    { label: "What to find", value: selectedSource },
+    {
+      label: "Target area",
+      value: [values.city, values.region, values.country].filter(Boolean).join(", ") || values.country,
+    },
+    { label: "Business category", value: values.categories.join(", ") || "Not selected" },
+    { label: "Service to offer", value: values.service || "Not selected" },
+    { label: "Leads requested", value: String(values.requestedLeadCount) },
+    { label: "Quality filter", value: `Score ${values.minimumScore}+` },
+    {
+      label: "Required contact data",
+      value:
+        [
+          values.requireEmail ? "Email" : null,
+          values.requirePhone ? "Phone" : null,
+          values.requireDecisionMaker ? "Decision maker" : null,
+        ]
+          .filter(Boolean)
+          .join(", ") || "No hard requirements",
+    },
+    { label: "Excluded domains", value: values.excludedDomains.join(", ") || "None" },
+    { label: "Additional instructions", value: values.additionalInstructions || "None" },
+  ];
+
+  return (
+    <>
+      <PageHeader
+        title="Generate Leads"
+        description="Choose who you want to reach. The system will find, verify and rank the strongest leads for you."
+      />
+
+      <form onSubmit={onSubmit} noValidate className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="space-y-4 xl:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>1. Choose the location</CardTitle>
+              <CardDescription>
+                State, region and city options update automatically for the selected country.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="country" label="Target country" error={errors.country?.message}>
+                <Controller
+                  control={control}
+                  name="country"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(next) => {
+                        field.onChange(next);
+                        setValue("region", "", { shouldDirty: true, shouldValidate: true });
+                        setValue("city", "", { shouldDirty: true, shouldValidate: true });
+                      }}
+                    >
+                      <SelectTrigger id="country" aria-invalid={Boolean(errors.country)}>
+                        <SelectValue placeholder="Select a country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COUNTRIES.map((country) => (
+                          <SelectItem key={country} value={country}>
+                            {country}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+
+              <Field
+                id="region"
+                label="State or region"
+                hint={regionOptions.length > 0 ? "Select an option for the chosen country." : "Enter a state or region."}
+                error={errors.region?.message}
+              >
+                {regionOptions.length > 0 ? (
+                  <Controller
+                    control={control}
+                    name="region"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(next) => {
+                          field.onChange(next);
+                          setValue("city", "", { shouldDirty: true, shouldValidate: true });
+                        }}
+                      >
+                        <SelectTrigger id="region" aria-invalid={Boolean(errors.region)}>
+                          <SelectValue placeholder="Select state or region" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {regionOptions.map((region) => (
+                            <SelectItem key={region} value={region}>
+                              {region}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                ) : (
+                  <Input
+                    id="region"
+                    placeholder="Enter state or region"
+                    aria-invalid={Boolean(errors.region)}
+                    {...register("region")}
+                  />
+                )}
+              </Field>
+
+              <Field
+                id="city"
+                label="City or area"
+                hint={cityOptions.length > 0 ? "Choose a suggestion or type a specific area." : "Enter a city or area."}
+                error={errors.city?.message}
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="city"
+                  list={cityOptions.length > 0 ? "city-options" : undefined}
+                  placeholder={regionOptions.length > 0 && !values.region ? "Select a state or region first" : "Select or type a city/area"}
+                  disabled={regionOptions.length > 0 && !values.region}
+                  aria-invalid={Boolean(errors.city)}
+                  {...register("city")}
+                />
+                {cityOptions.length > 0 ? (
+                  <datalist id="city-options">
+                    {cityOptions.map((city) => (
+                      <option key={city} value={city} />
+                    ))}
+                  </datalist>
+                ) : null}
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>2. Choose the leads you need</CardTitle>
+              <CardDescription>Tell the system your goal; the correct discovery workflow is selected automatically.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Field
+                id="source"
+                label="What kind of leads do you want?"
+                hint={sourceRules.guidance}
+                error={errors.source?.message}
+              >
+                <Controller
+                  control={control}
+                  name="source"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value}
+                      onValueChange={(next) => {
+                        const nextSource = next as DiscoverySourceValue;
+                        const nextRules = DISCOVERY_SOURCE_RULES[nextSource];
+                        field.onChange(nextSource);
+                        setValue("leadType", nextRules.defaultLeadType, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        setValue("service", nextRules.defaultService, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }}
+                    >
+                      <SelectTrigger id="source" aria-invalid={Boolean(errors.source)}>
+                        <SelectValue placeholder="Choose a lead goal" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DISCOVERY_SOURCES.map((source) => (
+                          <SelectItem key={source.value} value={source.value}>
+                            {source.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+
+              <Field
+                id="categories"
+                label="Which business category?"
+                hint="Choose one or more categories. You can also type your own."
+                error={errors.categories?.message}
+              >
+                <Controller
+                  control={control}
+                  name="categories"
+                  render={({ field }) => (
+                    <MultiSelect
+                      id="categories"
+                      options={BUSINESS_CATEGORIES}
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="Select business categories"
+                      allowCustom
+                      customLabel="Custom category"
+                      invalid={Boolean(errors.categories)}
+                    />
+                  )}
+                />
+              </Field>
+
+              <Field
+                id="service"
+                label="Which service do you want to offer?"
+                hint="A suitable service is selected automatically; change it only if needed."
+                error={errors.service?.message}
+              >
+                <Controller
+                  control={control}
+                  name="service"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="service" aria-invalid={Boolean(errors.service)}>
+                        <SelectValue placeholder="Select a service" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sourceRules.services.map((service) => (
+                          <SelectItem key={service} value={service}>
+                            {service}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>3. Choose the lead count</CardTitle>
+              <CardDescription>Start with a smaller batch; you can run another request at any time.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Field
+                id="requestedLeadCount"
+                label="How many leads do you need?"
+                hint="25 is a safe first batch. Maximum 1000 per request."
+                error={errors.requestedLeadCount?.message}
+              >
+                <Input
+                  id="requestedLeadCount"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={1000}
+                  aria-invalid={Boolean(errors.requestedLeadCount)}
+                  {...register("requestedLeadCount", { valueAsNumber: true })}
+                />
+              </Field>
+              <p className="rounded-md border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2 text-xs text-[var(--app-text-muted)]">
+                Recommended quality settings are already applied: 15 km radius, score 80+ and a verified public email.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 marker:hidden">
+                <span>
+                  <span className="block text-sm font-semibold text-[var(--app-text)]">Advanced options</span>
+                  <span className="mt-0.5 block text-xs text-[var(--app-text-muted)]">
+                    Change quality, contact and exclusion rules only when needed.
+                  </span>
+                </span>
+                <Settings2 className="size-4 shrink-0 text-[var(--app-text-muted)]" aria-hidden />
+              </summary>
+              <CardContent className="space-y-5 border-t border-[var(--app-border)] pt-5">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field
+                    id="radiusKm"
+                    label="Search radius (km)"
+                    hint="Used mainly for local business searches."
+                    error={errors.radiusKm?.message}
+                  >
+                    <Input
+                      id="radiusKm"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={500}
+                      aria-invalid={Boolean(errors.radiusKm)}
+                      {...register("radiusKm", { valueAsNumber: true })}
+                    />
+                  </Field>
+
+                  <Field
+                    id="minimumScore"
+                    label="Minimum quality score"
+                    hint="80 is recommended. Higher gives fewer but stronger leads."
+                    error={errors.minimumScore?.message}
+                  >
+                    <Input
+                      id="minimumScore"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      aria-invalid={Boolean(errors.minimumScore)}
+                      {...register("minimumScore", { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
+
+                <Field
+                  id="leadType"
+                  label="Target profile"
+                  hint="The recommended profile changes automatically with your lead goal."
+                  error={errors.leadType?.message}
+                >
+                  <Controller
+                    control={control}
+                    name="leadType"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger id="leadType" aria-invalid={Boolean(errors.leadType)}>
+                          <SelectValue placeholder="Select a target profile" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sourceRules.leadTypes.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <Controller
+                  control={control}
+                  name="requireEmail"
+                  render={({ field }) => (
+                    <ToggleRow
+                      id="requireEmail"
+                      label="Email required"
+                      description="Only keep leads with a validated public email address."
+                    >
+                      <Switch id="requireEmail" checked={field.value} onCheckedChange={field.onChange} />
+                    </ToggleRow>
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="requirePhone"
+                  render={({ field }) => (
+                    <ToggleRow
+                      id="requirePhone"
+                      label="Phone required"
+                      description="Only keep leads with a validated phone number."
+                    >
+                      <Switch id="requirePhone" checked={field.value} onCheckedChange={field.onChange} />
+                    </ToggleRow>
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="requireDecisionMaker"
+                  render={({ field }) => (
+                    <ToggleRow
+                      id="requireDecisionMaker"
+                      label="Decision-maker required"
+                      description="Only keep leads with a named owner or manager."
+                    >
+                      <Switch
+                        id="requireDecisionMaker"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </ToggleRow>
+                  )}
+                />
+                </div>
+
+                <Field
+                  id="excludedDomains"
+                  label="Businesses or domains to exclude"
+                  hint="Press Enter after each domain, for example competitor.com."
+                  error={errors.excludedDomains?.message ?? errors.excludedDomains?.root?.message}
+                >
+                  <Controller
+                    control={control}
+                    name="excludedDomains"
+                    render={({ field }) => (
+                      <TagInput
+                        id="excludedDomains"
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="competitor.com"
+                        invalid={Boolean(errors.excludedDomains)}
+                      />
+                    )}
+                  />
+                </Field>
+
+                <Field
+                  id="additionalInstructions"
+                  label="Additional instructions"
+                  hint="Optional. Up to 1000 characters."
+                  error={errors.additionalInstructions?.message}
+                >
+                  <Textarea
+                    id="additionalInstructions"
+                    rows={4}
+                    placeholder="For example: prioritise practices with outdated booking flows."
+                    aria-invalid={Boolean(errors.additionalInstructions)}
+                    {...register("additionalInstructions")}
+                  />
+                </Field>
+              </CardContent>
+            </details>
+          </Card>
+        </div>
+
+        <div className="xl:col-span-1">
+          <Card className="xl:sticky xl:top-20">
+            <CardHeader>
+              <CardTitle>Request summary</CardTitle>
+              <CardDescription>Review before starting the agent.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-0">
+              <dl className="divide-y divide-[var(--app-border)]">
+                {summaryRows.map((row) => (
+                  <div key={row.label} className="flex gap-3 py-2 first:pt-0">
+                    <dt className="w-36 shrink-0 text-xs text-[var(--app-text-muted)]">{row.label}</dt>
+                    <dd className="min-w-0 flex-1 break-words text-xs font-medium text-[var(--app-text)]">
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              {Object.keys(errors).length > 0 ? (
+                <div
+                  role="alert"
+                  className="mt-4 flex items-start gap-2 rounded-md border border-danger-100 bg-danger-50 px-3 py-2 text-xs text-danger-700 dark:border-danger-700 dark:bg-danger-700/20 dark:text-danger-100"
+                >
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>Some fields need attention before the search can start.</span>
+                </div>
+              ) : null}
+
+              <Button type="submit" size="lg" className="mt-4 w-full">
+                <Rocket aria-hidden />
+                Start Lead Generation
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </form>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start lead generation?</DialogTitle>
+            <DialogDescription>
+              The Opportunity Hunter Agent will begin searching immediately. You can cancel the run at any
+              time from the request details page.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <dl className="divide-y divide-[var(--app-border)] text-xs">
+              {summaryRows.map((row) => (
+                <div key={row.label} className="flex gap-3 py-2 first:pt-0">
+                  <dt className="w-36 shrink-0 text-[var(--app-text-muted)]">{row.label}</dt>
+                  <dd className="min-w-0 flex-1 break-words font-medium">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
+              Back to the form
+            </Button>
+            <Button
+              loading={mutation.isPending}
+              onClick={() => pendingValues && mutation.mutate(pendingValues)}
+            >
+              <Rocket aria-hidden />
+              Start Lead Generation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

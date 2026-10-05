@@ -177,7 +177,7 @@ export function OutreachClient() {
             ) : null}
             {preview?.auditReportAvailable ? (
               <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--app-border)] p-3">
-                <div className="min-w-0"><p className="text-xs font-medium">{preview.auditReportFilename ?? "Website audit report"}</p><p className="text-[11px] text-[var(--app-text-muted)]">Attached when the approved email is sent.</p></div>
+                <div className="min-w-0"><p className="text-xs font-medium">{preview.auditReportFilename ?? "Website audit report"}</p><p className="text-[11px] text-[var(--app-text-muted)]">Prepared internally. Sent only when the client requests the report.</p></div>
                 <Button asChild variant="secondary" size="sm"><a href={`/api/leads/${preview.leadId}/audit-report`} target="_blank" rel="noopener noreferrer"><FileDown aria-hidden />Preview PDF</a></Button>
               </div>
             ) : null}

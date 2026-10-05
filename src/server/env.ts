@@ -17,6 +17,9 @@ export const serverEnv = {
   auditConfidenceThreshold: Number(process.env.AUDIT_CONFIDENCE_THRESHOLD ?? "70"),
   auditStorageBucket: process.env.AUDIT_STORAGE_BUCKET ?? "website-audit-reports",
   meetingBookingUrl: process.env.CODENATIVEX_MEETING_URL ?? "https://calendly.com/rajaziafat3258/30min",
+  calendlyApiToken: process.env.CALENDLY_API_TOKEN ?? "",
+  calendlyWebhookSigningKey: process.env.CALENDLY_WEBHOOK_SIGNING_KEY ?? "",
+  calendlyEventTypeUri: process.env.CALENDLY_EVENT_TYPE_URI ?? "",
   contactEmail: process.env.CODENATIVEX_CONTACT_EMAIL ?? "contact@codenativex.com",
   logoUrl:
     process.env.CODENATIVEX_LOGO_URL ??

@@ -1,0 +1,1433 @@
+{
+  "name": "05 - Meeting Booking & Sales Handoff - FIXED",
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "executionTimeout": 540
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "93b3332c23b7d7da4a8ac7a2d25335d0b65ef3b219af7b4aff014f84741d63fa"
+  },
+  "nodeGroups": [],
+  "id": "QgA63XI9UsYW3ILr",
+  "tags": [],
+  "nodes": [
+    {
+      "name": "Manual Meeting Test Trigger",
+      "id": "8215c0ee-f870-432a-b8a0-f543cae55033",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "name": "Meeting Queue Schedule",
+      "id": "dad31fd7-c065-4ce3-a8d3-dad2e236abbe",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Claim Next Reply Action",
+      "id": "9d822596-e590-47f3-8d82-3747cdd8e849",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/reply-actions/next' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "name": "Action Available",
+      "id": "6d145da2-b947-47b5-ada1-e4e3a4990d24",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        100
+      ],
+      "parameters": {
+        "jsCode": "if (!$json.action) return []; return [{json:{id:$json.action.id,key:$json.action.claim_key}}];"
+      }
+    },
+    {
+      "name": "Prepare Permission-Based Reply",
+      "id": "259915c3-992b-4edd-b9ec-3619799273bc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/reply-actions/prepare' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 320000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Reply Prepared?",
+      "id": "a68a9b9f-c563-4497-a173-a894fe3e9101",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b70d48b6-23ec-4fcf-9457-7a7bfdd3374e",
+              "leftValue": "={{ !$json.error && Boolean($json.id && $json.body) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Report Requested?",
+      "id": "d91e542b-e688-4741-bc61-1c2243da97bc",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5b2ac81a-27c3-424f-ad81-ae4b89e314b3",
+              "leftValue": "={{ $json.action === 'report' }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Get Requested Report",
+      "id": "6e2ae43e-4954-48e0-932e-90579bd761c8",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        -100
+      ],
+      "parameters": {
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/audits/' + $json.leadId + '/report' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "PDF Downloaded?",
+      "id": "65a03b1e-3764-4233-b529-48343342e728",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9d06d9b9-e515-4aaa-a625-ceea1711c417",
+              "leftValue": "={{ Boolean($binary?.data) && !$json.error }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Authorize Report Send",
+      "id": "2ad63065-1c3d-4865-affe-2c93557d4a79",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/reply-actions/authorize' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({id:$('Prepare Permission-Based Reply').item.json.id,key:$('Prepare Permission-Based Reply').item.json.key}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "name": "Restore Report Binary",
+      "id": "90dd7f17-a04f-481a-993b-88c5a9523c96",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const prepared = $('Prepare Permission-Based Reply').item.json; const pdf = $('Get Requested Report').item.binary; if (!$json.authorized || !pdf?.data) return []; return [{json:prepared,binary:pdf}];"
+      }
+    },
+    {
+      "name": "Authorize Booking Link Send",
+      "id": "5207108c-9d5a-46e4-8891-85eddd9a074e",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/reply-actions/authorize' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({id:$json.id,key:$json.key}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "name": "Restore Booking Reply",
+      "id": "b75d02c0-b02c-4c17-8068-7684b00e3732",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        200
+      ],
+      "parameters": {
+        "jsCode": "if (!$json.authorized) return []; return [{json:$('Prepare Permission-Based Reply').item.json}];"
+      }
+    },
+    {
+      "name": "Send Requested Report",
+      "id": "11949b98-b2ee-48e7-9b29-e54aaea753c7",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2220,
+        -100
+      ],
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.threadId }}",
+        "messageId": "={{ $json.replyMessageId }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "replyToSenderOnly": true,
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          }
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "I1Q5uxycuu21VM1U",
+          "name": "Gmail account"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Send Google Meet Booking Link",
+      "id": "a0d226c6-dc87-4534-b30f-8f0afa1f0108",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1780,
+        200
+      ],
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.threadId }}",
+        "messageId": "={{ $json.replyMessageId }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "replyToSenderOnly": true,
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "I1Q5uxycuu21VM1U",
+          "name": "Gmail account"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "name": "Build Reply Send Result",
+      "id": "0ebe1397-8336-4ff5-9ea2-89eb2e97d449",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const p=$('Prepare Permission-Based Reply').item.json; const id=String($json.id || $json.messageId || ''); return [{json:{id:p.id,key:p.key,messageId:id||undefined,error:$json.error ? String($json.error.message||$json.error) : (!id ? 'Gmail send result ambiguous; do not retry automatically.' : undefined)}}];"
+      }
+    },
+    {
+      "name": "Build Preparation Failure",
+      "id": "a75644f6-33e6-4c71-a42d-a5df89f32f29",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const c=$('Action Available').item.json; return [{json:{id:c.id,key:c.key,error:String($json.error?.message || $json.error || 'Requested report could not be prepared; manual review required.')}}];"
+      }
+    },
+    {
+      "name": "Save Reply Action Result",
+      "id": "936df831-b65e-45e1-94d7-60b18fde841a",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/reply-actions/result' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "name": "Calendly Sync Schedule",
+      "id": "4d002440-aced-4e01-9ee8-19ed9dde8c7c",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        700
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Sync Confirmed Calendly Meetings",
+      "id": "05d4721c-abdd-457c-83ae-f4b56f75f199",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/meetings/sync' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "c592cc4d-4897-4d1e-8fd1-435df1df253d",
+      "name": "Get Booked Meeting Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/meetings/handoff/next' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "position": [
+        460,
+        700
+      ]
+    },
+    {
+      "id": "e50cfbfd-a723-409e-8206-e16173318d3e",
+      "name": "Handoff Available",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "if (!$json.handoff) return []; return [{json:$json.handoff}];"
+      },
+      "position": [
+        680,
+        700
+      ]
+    },
+    {
+      "id": "6303993b-9e2b-41b4-8fdc-bcbcd1c0b806",
+      "name": "Notify Sales of Confirmed Meeting",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "emailType": "text",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "CodeNativeX Agent"
+        }
+      },
+      "position": [
+        900,
+        700
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "I1Q5uxycuu21VM1U",
+          "name": "Gmail account"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "5a8f9bb2-703a-4d34-ada9-a53032d40f9c",
+      "name": "Build Meeting Handoff Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const p=$('Handoff Available').item.json;const messageId=String($json.id || $json.messageId || '');return [{json:{id:p.id,key:p.key,messageId:messageId||undefined,error:$json.error?String($json.error.message||$json.error):(!messageId?'Gmail send ambiguous':undefined)}}];"
+      },
+      "position": [
+        1120,
+        700
+      ]
+    },
+    {
+      "id": "f20badfe-b21a-4273-970f-37410e06f8b0",
+      "name": "Save Meeting Handoff Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/meetings/handoff/result' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "position": [
+        1340,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_jobs",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "05 - Meeting Booking & Sales Handoff"
+            }
+          ]
+        }
+      },
+      "id": "0585646f-9061-4862-93d2-708f24c8c736",
+      "name": "Get Workflow 05 Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        2856
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        }
+      },
+      "id": "54dfe18d-c884-4aaf-8d2e-4c38cfca564a",
+      "name": "Get Workflow 05 Job Candidates",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        2856
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Get Workflow 05 Job').first().json || {};\nconst candidates = $input.all().map((item) => item.json || {});\nconst keys = [...new Set(candidates.map((row) => String(row.lead_key || '').trim()).filter(Boolean))];\nreturn keys.map((lead_key) => ({ json: { ...job, lead_key } }));"
+      },
+      "id": "989513e7-22e9-4422-bf6d-4eda0bf86ef7",
+      "name": "Build Workflow 05 Lead Keys",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        2856
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_pipeline",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_key }}"
+            }
+          ]
+        }
+      },
+      "id": "06a66357-e0ff-4088-afd5-fa2db7b2ad23",
+      "name": "Get Workflow 05 Leads",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        432,
+        2856
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Get Workflow 05 Job').first().json || {};\nconst leads = $input.all().map((item) => item.json || {});\nconst targets = leads.filter((lead) => lead.outreach_id || lead.gmail_thread_id || [\n  'reply_needs_human','meeting_requested','meeting_processing','awaiting_meeting_selection',\n  'report_requested','report_shared','awaiting_booking','meeting_booked','meeting_needs_human','sales_handoff_completed','sales_handoff_failed'\n].includes(String(lead.status || '')));\nconst alwaysActiveStatuses = new Set(['awaiting_reply','follow_up_preparing','report_requested','meeting_requested','meeting_processing','awaiting_meeting_selection','awaiting_booking']);\nconst isActive = (lead) => {\n  const status = String(lead.status || '');\n  if (alwaysActiveStatuses.has(status)) return true;\n  return status === 'reply_needs_human' && (\n    lead.next_workflow === '05 - Meeting Booking & Sales Handoff'\n    || lead.sales_handoff_status === 'processing'\n  );\n};\nconst active = targets.filter(isActive);\nconst waitingSelection = targets.filter((lead) => lead.meeting_status === 'slots_offered' || lead.status === 'awaiting_meeting_selection');\nconst booked = targets.filter((lead) => lead.meeting_status === 'booked' || lead.status === 'meeting_booked');\nconst handoffs = targets.filter((lead) => lead.sales_handoff_status === 'completed');\nconst review = targets.filter((lead) => lead.human_review_required === true || lead.status === 'meeting_needs_human' || lead.sales_handoff_status === 'failed');\nconst terminal = targets.filter((lead) => !isActive(lead));\nconst transitionReady = targets.length > 0 && active.length === 0 && terminal.length === targets.length;\nlet stage = targets.some(lead=>lead.status==='awaiting_booking') ? 'awaiting_calendly_booking' : 'sales_handoff_active';\nif (waitingSelection.length) stage = 'awaiting_meeting_selection';\nelse if (targets.some((lead) => ['meeting_requested','meeting_processing'].includes(String(lead.status || '')))) stage = 'meeting_booking_active';\nlet existing = job.result_summary;\nif (!existing || typeof existing !== 'object' || Array.isArray(existing)) existing = {};\nreturn [{ json: {\n  ...job, transition_ready: transitionReady, active_stage: stage,\n  workflow05_summary: {\n    matched_leads: leads.length, outreach_targets: targets.length, active_targets: active.length,\n    terminal_targets: terminal.length, waiting_for_slot_selection: waitingSelection.length,\n    meetings_booked: booked.length, sales_handoffs_completed: handoffs.length, human_review_queue: review.length\n  },\n  merged_result_summary: { ...existing,\n    workflow05_targets: targets.length, workflow05_active: active.length, workflow05_terminal: terminal.length,\n    workflow05_waiting_slot_selection: waitingSelection.length, meetings_booked: booked.length,\n    sales_handoffs_completed: handoffs.length, workflow05_human_review: review.length\n  }\n} }];"
+      },
+      "id": "40334ed0-f8b1-4548-8101-68e5abf8088e",
+      "name": "Summarize Workflow 05 Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        2856
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8d1b6d58-2f41-4dc6-8db7-b24d7fbbfe14",
+              "leftValue": "={{ $json.transition_ready }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9d035633-5ac5-434e-a24e-53975d212a40",
+      "name": "Workflow 05 Job Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        2856
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json || {};\nconst summary = job.workflow05_summary || {};\nconst warning = Number(summary.human_review_queue || 0) > 0;\nlet stage = 'lead_generation_completed';\nif (Number(summary.meetings_booked || 0) > 0) stage = 'meeting_booked_sales_handoff_completed';\nelse if (Number(summary.sales_handoffs_completed || 0) > 0) stage = 'sales_handoff_completed';\nelse if (warning) stage = 'completed_with_human_review';\nreturn { json: {\n  ...job, final_job_stage: stage, final_job_severity: warning ? 'warning' : 'info',\n  final_job_message: warning\n    ? `Lead generation completed with ${summary.human_review_queue || 0} item(s) requiring human review.`\n    : 'Lead generation, outreach monitoring, and sales handoff completed.'\n} };"
+      },
+      "id": "4051f24a-9ba3-4e9c-88f1-94af0c864b60",
+      "name": "Prepare Workflow 05 Completion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        2760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "05 - Meeting Booking & Sales Handoff"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "={{ $json.final_job_stage }}"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "100"
+            },
+            {
+              "fieldId": "next_workflow",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "worker_id",
+              "fieldValue": "05"
+            },
+            {
+              "fieldId": "result_summary",
+              "fieldValue": "={{ $json.merged_result_summary }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "9ce6fd93-f194-4beb-8aa5-3ed42ba0c354",
+      "name": "Complete Workflow 05 Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        2760
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $('Prepare Workflow 05 Completion').first().json || {};\nconst updated = $input.first().json || {};\nconst hasError = Boolean(updated.error || updated.errorMessage || (updated.httpCode && Number(updated.httpCode) >= 400));\nif (hasError || !updated.job_id) return [];\nreturn [{ json: { ...prepared, job_update_ok: true } }];"
+      },
+      "id": "360cf62a-74da-4bb2-9d89-d6e26b40fa94",
+      "name": "Restore Workflow 05 Completion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        2760
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "lead_generation_completed"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.final_job_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.final_job_severity }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.final_job_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.workflow05_summary }}"
+            }
+          ]
+        }
+      },
+      "id": "25150dcb-aa99-47e5-a60a-5087491cf2f4",
+      "name": "Log Workflow 05 Completion",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1840,
+        2760
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "05 - Meeting Booking & Sales Handoff"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "={{ $json.active_stage }}"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "90"
+            },
+            {
+              "fieldId": "worker_id",
+              "fieldValue": "05"
+            },
+            {
+              "fieldId": "result_summary",
+              "fieldValue": "={{ $json.merged_result_summary }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "e21b9df7-2239-4fd7-ae67-8cb22477641c",
+      "name": "Update Workflow 05 Job Activity",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        2952
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bc7d024a-6262-47bc-80bc-006cf64a0764",
+      "name": "Track Reply Job Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        1100
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Meeting Test Trigger": {
+      "main": [
+        [
+          {
+            "node": "Claim Next Reply Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meeting Queue Schedule": {
+      "main": [
+        [
+          {
+            "node": "Claim Next Reply Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Next Reply Action": {
+      "main": [
+        [
+          {
+            "node": "Action Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action Available": {
+      "main": [
+        [
+          {
+            "node": "Prepare Permission-Based Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Permission-Based Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply Prepared?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Prepared?": {
+      "main": [
+        [
+          {
+            "node": "Report Requested?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Preparation Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report Requested?": {
+      "main": [
+        [
+          {
+            "node": "Get Requested Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Authorize Booking Link Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Requested Report": {
+      "main": [
+        [
+          {
+            "node": "PDF Downloaded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF Downloaded?": {
+      "main": [
+        [
+          {
+            "node": "Authorize Report Send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Preparation Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize Report Send": {
+      "main": [
+        [
+          {
+            "node": "Restore Report Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Report Binary": {
+      "main": [
+        [
+          {
+            "node": "Send Requested Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize Booking Link Send": {
+      "main": [
+        [
+          {
+            "node": "Restore Booking Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Booking Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Google Meet Booking Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Requested Report": {
+      "main": [
+        [
+          {
+            "node": "Build Reply Send Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Google Meet Booking Link": {
+      "main": [
+        [
+          {
+            "node": "Build Reply Send Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reply Send Result": {
+      "main": [
+        [
+          {
+            "node": "Save Reply Action Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Preparation Failure": {
+      "main": [
+        [
+          {
+            "node": "Save Reply Action Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendly Sync Schedule": {
+      "main": [
+        [
+          {
+            "node": "Sync Confirmed Calendly Meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Confirmed Calendly Meetings": {
+      "main": [
+        [
+          {
+            "node": "Get Booked Meeting Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Booked Meeting Handoff": {
+      "main": [
+        [
+          {
+            "node": "Handoff Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handoff Available": {
+      "main": [
+        [
+          {
+            "node": "Notify Sales of Confirmed Meeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Sales of Confirmed Meeting": {
+      "main": [
+        [
+          {
+            "node": "Build Meeting Handoff Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Meeting Handoff Result": {
+      "main": [
+        [
+          {
+            "node": "Save Meeting Handoff Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Workflow 05 Job": {
+      "main": [
+        [
+          {
+            "node": "Get Workflow 05 Job Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Workflow 05 Job Candidates": {
+      "main": [
+        [
+          {
+            "node": "Build Workflow 05 Lead Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Workflow 05 Lead Keys": {
+      "main": [
+        [
+          {
+            "node": "Get Workflow 05 Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Workflow 05 Leads": {
+      "main": [
+        [
+          {
+            "node": "Summarize Workflow 05 Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Workflow 05 Job": {
+      "main": [
+        [
+          {
+            "node": "Workflow 05 Job Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow 05 Job Complete?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Workflow 05 Completion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Workflow 05 Job Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Workflow 05 Completion": {
+      "main": [
+        [
+          {
+            "node": "Complete Workflow 05 Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Workflow 05 Job": {
+      "main": [
+        [
+          {
+            "node": "Restore Workflow 05 Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Workflow 05 Completion": {
+      "main": [
+        [
+          {
+            "node": "Log Workflow 05 Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Reply Job Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get Workflow 05 Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

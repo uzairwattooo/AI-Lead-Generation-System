@@ -1,0 +1,629 @@
+{
+  "name": "03 - Personalized Evidence-Based Email Outreach",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers ?? {};\nconst supplied = headers['x-codenativex-intake-key'] ?? headers['X-CodeNativeX-Intake-Key'];\nif (!supplied || supplied !== $env.N8N_WEBHOOK_SECRET) throw new Error('Unauthorized outreach webhook');\nreturn $input.all();"
+      },
+      "id": "91cab901-fdaa-45e1-bdd5-fe156bb513cb",
+      "name": "Validate Shared Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "codenativex/outreach/evidence",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "d7b284d4-a42f-48f6-8036-0fa5045b3b2c",
+      "name": "Evidence Outreach Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        464,
+        1328
+      ],
+      "webhookId": "codenativex-evidence-outreach"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst ids = Array.isArray(body.leadIds) ? body.leadIds : body.leadId ? [body.leadId] : [];\nconst mode = body.mode === 'send_approved' ? 'send_approved' : 'draft_only';\nif (!ids.length) throw new Error('leadIds is required');\nreturn ids.map(leadId => ({ json: { leadId, mode } }));"
+      },
+      "id": "1eba2f7d-5589-4d47-bbcf-07bc2b08da1d",
+      "name": "Normalize Outreach Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/outreach/context' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ leadId: $json.leadId, mode: $json.mode }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f923c305-e3f1-43f7-850d-52f931de020e",
+      "name": "Get Safe Outreach Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1136,
+        1328
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normalize Outreach Items').item.json;\nif ($json.error) {\n const message=String($json.error.message ?? $json.error);\n const status=Number($json.error.statusCode ?? $json.error.httpCode ?? $json.statusCode ?? 0);\n if (original.mode === 'draft_only' && (status===409 || /\\b409\\b/.test(message)) && /audit|website|finding/i.test(message)) return [{json:{...original,needsAudit:true}}];\n throw new Error(message);\n}\nreturn [{json:{...$json,needsAudit:false}}];"
+      },
+      "id": "37bf8cb1-4904-4fb2-9b48-9d08e000e71f",
+      "name": "Gate Missing Audit Safely",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needsAudit }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b29b5e21-4f4c-425d-9ee1-d94720854c5c",
+      "name": "Needs Verified Audit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1584,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_AUDIT_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ leadIds: [$json.leadId], mode: 'audit_and_prepare_draft' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "1a079666-cb0d-4cde-af17-28f1b01f7373",
+      "name": "Queue Missing Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1808,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "draft_only",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "32e3de36-6763-4c02-99e0-ab4541e589f2",
+      "name": "Draft Only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1808,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 700,
+          "temperature": 0.2
+        }
+      },
+      "id": "a1dabcf4-2c64-4667-8249-a303664ce5ee",
+      "name": "Write Evidence-Based Draft",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        2032,
+        1328
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ehpBftoFkQfTvXQG",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Get Safe Outreach Context').item.json;\nconst responseContent = Array.isArray($json.output)\n  ? $json.output.flatMap(item => Array.isArray(item.content) ? item.content : []).find(item => item?.type === 'output_text')\n  : undefined;\nconst raw = responseContent?.text ?? $json.message?.content ?? $json.choices?.[0]?.message?.content ?? $json.text ?? $json.output ?? '';\nconst cleaned = typeof raw === 'string'\n  ? raw.replace(/^```json\\s*/i, '').replace(/```$/,'').trim()\n  : raw;\nconst draft = typeof cleaned === 'object' && cleaned !== null ? cleaned : JSON.parse(String(cleaned));\nif (!draft.subject || !draft.body || !Array.isArray(draft.finding_codes)) throw new Error('AI did not return the required JSON shape');\ndraft.body = String(draft.body)\n  .replace(/\\n+(Best regards|Kind regards|Warm regards|Regards|Sincerely|Best),?\\s*(?:\\n.*)?$/i, '')\n  .trim();\nreturn [{ json: { leadId: context.leadId, subject: String(draft.subject).trim(), body: draft.body, findingCodes: draft.finding_codes } }];"
+      },
+      "id": "08af1d0b-0519-4e95-bdce-78d104802db7",
+      "name": "Parse Strict Draft JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/outreach/draft' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "0d582f46-aa41-460c-8ed3-14b9f68bce8b",
+      "name": "Save Approval-Required Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2608,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Get Safe Outreach Context').item.json.recipientEmail }}",
+        "subject": "={{ $('Get Safe Outreach Context').item.json.subject }}",
+        "message": "={{ $('Get Safe Outreach Context').item.json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "CodeNativeX Team"
+        },
+        "emailType": "html"
+      },
+      "id": "3b605611-3d1a-4f47-ae3f-c11da63d5cce",
+      "name": "Gmail Send First Touch",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2384,
+        1520
+      ],
+      "webhookId": "5318ef7b-d82b-46df-8512-4af87e2c7078",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "I1Q5uxycuu21VM1U",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Get Safe Outreach Context').item.json;\nconst failed = Boolean($json.error || !($json.id ?? $json.messageId) || !$json.threadId);\nreturn [{ json: { leadId: context.leadId, sendKey: context.sendKey, outcome: failed ? 'failed' : 'sent', gmailMessageId: failed ? undefined : ($json.id ?? $json.messageId), gmailThreadId: failed ? undefined : ($json.threadId), error: failed ? String($json.error.message ?? $json.error) : undefined } }];"
+      },
+      "id": "6486b4a4-5dc3-4004-8c27-3b5bfc0893b2",
+      "name": "Build Gmail Send Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2608,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL + '/api/internal/outreach/result' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b747690c-68f0-4826-85f1-0c1522825ee7",
+      "name": "Persist Gmail IDs & Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2832,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Get Safe Outreach Context').item.json;\nconst sendResult = $('Build Gmail Send Result').item.json;\nconst adminEmail = String($env.CODENATIVEX_ADMIN_NOTIFICATION_EMAIL ?? $env.CODENATIVEX_CONTACT_EMAIL ?? '').trim();\nconst dashboardBase = String($env.CODENATIVEX_ADMIN_DASHBOARD_URL ?? 'http://localhost:3000').replace(/\\/$/, '');\nconst shouldNotify = sendResult.outcome === 'sent' && Boolean(sendResult.gmailMessageId) && Boolean(adminEmail);\nconst escapeHtml = (value) => String(value ?? '').replace(/[&<>\\\"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\\\"': '&quot;', \"'\": '&#39;' })[character]);\nconst companyName = context.companyName || 'Unknown company';\nconst reportFilename = context.reportFilename || 'No audit report';\nconst sentAt = new Date().toISOString();\nconst auditLabel = 'Prepared internally; not attached to the first email.';\nconst adminSubject = `Outreach sent: ${companyName}`;\nconst adminHtml = `<!doctype html><html><body style=\"margin:0;padding:24px;background:#070a11;font-family:Arial,sans-serif;color:#e9eef8\"><table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\"><table role=\"presentation\" width=\"620\" style=\"max-width:620px;width:100%;background:#0d1320;border:1px solid #263247;border-radius:16px;overflow:hidden\"><tr><td style=\"height:5px;background:linear-gradient(90deg,#55d6c2,#f2bd55,#ef7d76,#b86adf)\"></td></tr><tr><td style=\"padding:26px\"><div style=\"font-size:12px;letter-spacing:1.5px;color:#55d6c2;text-transform:uppercase\">CodeNativeX Agent Notification</div><h1 style=\"margin:10px 0 8px;font-size:24px;color:#ffffff\">Client outreach sent successfully</h1><p style=\"margin:0 0 22px;color:#aeb9cc;line-height:1.6\">The approved outreach email was delivered by the agent.</p><table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"8\" style=\"background:#111a2a;border-radius:10px;color:#e9eef8;font-size:14px\"><tr><td style=\"color:#8fa0b8;width:145px\">Company</td><td><strong>${escapeHtml(companyName)}</strong></td></tr><tr><td style=\"color:#8fa0b8\">Recipient</td><td>${escapeHtml(context.recipientEmail)}</td></tr><tr><td style=\"color:#8fa0b8\">Subject</td><td>${escapeHtml(context.subject)}</td></tr><tr><td style=\"color:#8fa0b8\">Audit report</td><td>${escapeHtml(auditLabel)}</td></tr><tr><td style=\"color:#8fa0b8\">Gmail message ID</td><td>${escapeHtml(sendResult.gmailMessageId)}</td></tr><tr><td style=\"color:#8fa0b8\">Gmail thread ID</td><td>${escapeHtml(sendResult.gmailThreadId)}</td></tr><tr><td style=\"color:#8fa0b8\">Sent at</td><td>${escapeHtml(sentAt)}</td></tr></table><p style=\"margin:24px 0 0\"><a href=\"${escapeHtml(`${dashboardBase}/dashboard/outreach`)}\" style=\"display:inline-block;padding:12px 18px;border-radius:8px;background:#55d6c2;color:#07111a;text-decoration:none;font-weight:700\">Open Outreach Dashboard</a></p><p style=\"margin:20px 0 0;color:#75849b;font-size:12px\">Automated internal notification. The client received the short first-touch email without an attachment.</p></td></tr></table></td></tr></table></body></html>`;\nreturn [{ json: { ...$json, shouldNotify, adminEmail, adminSubject, adminHtml, clientCompanyName: companyName, clientRecipientEmail: context.recipientEmail, reportFilename, clientGmailMessageId: sendResult.gmailMessageId, clientGmailThreadId: sendResult.gmailThreadId } }];"
+      },
+      "id": "86ef8595-f5b9-459d-8d73-3734344c721c",
+      "name": "Build Admin Send Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3056,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.shouldNotify }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ab5fddfd-6591-48cd-8f51-5a2cc5fbb266",
+      "name": "Notify Admin?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3280,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.adminEmail }}",
+        "subject": "={{ $json.adminSubject }}",
+        "message": "={{ $json.adminHtml }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "CodeNativeX Agent"
+        }
+      },
+      "id": "1610e4b9-201e-40ba-846d-63e3aa707d4d",
+      "name": "Send Admin Outreach Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3504,
+        1456
+      ],
+      "webhookId": "cfe8cf75-eb3c-4629-8b55-3282cfa1cd4c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "I1Q5uxycuu21VM1U",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $('Build Admin Send Notification').item.json;\nconst notificationAttempted = prepared.shouldNotify === true;\nconst notificationFailed = notificationAttempted && Boolean($json.error);\nconst notificationMessageId = notificationAttempted && !notificationFailed ? ($json.id ?? $json.messageId) : undefined;\nreturn [{ json: { saved: prepared.saved === true, status: prepared.status, adminNotificationStatus: !notificationAttempted ? 'skipped_missing_admin_email_or_client_not_sent' : notificationFailed ? 'failed' : 'sent', adminNotificationMessageId: notificationMessageId, adminNotificationError: notificationFailed ? String($json.error.message ?? $json.error) : undefined } }];"
+      },
+      "id": "b771c3d6-7a95-48cc-a2b2-417ecb7da6af",
+      "name": "Return Outreach Completion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3728,
+        1520
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Evidence Outreach Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Shared Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Shared Secret": {
+      "main": [
+        [
+          {
+            "node": "Normalize Outreach Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Outreach Items": {
+      "main": [
+        [
+          {
+            "node": "Get Safe Outreach Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Safe Outreach Context": {
+      "main": [
+        [
+          {
+            "node": "Gate Missing Audit Safely",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Missing Audit Safely": {
+      "main": [
+        [
+          {
+            "node": "Needs Verified Audit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Verified Audit?": {
+      "main": [
+        [
+          {
+            "node": "Queue Missing Audit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Only?": {
+      "main": [
+        [
+          {
+            "node": "Write Evidence-Based Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail Send First Touch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Evidence-Based Draft": {
+      "main": [
+        [
+          {
+            "node": "Parse Strict Draft JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Strict Draft JSON": {
+      "main": [
+        [
+          {
+            "node": "Save Approval-Required Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Gmail Send Result": {
+      "main": [
+        [
+          {
+            "node": "Persist Gmail IDs & Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Gmail IDs & Status": {
+      "main": [
+        [
+          {
+            "node": "Build Admin Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Admin Send Notification": {
+      "main": [
+        [
+          {
+            "node": "Notify Admin?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Admin?": {
+      "main": [
+        [
+          {
+            "node": "Send Admin Outreach Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Outreach Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Admin Outreach Notification": {
+      "main": [
+        [
+          {
+            "node": "Return Outreach Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Send First Touch": {
+      "main": [
+        [
+          {
+            "node": "Build Gmail Send Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "93b3332c23b7d7da4a8ac7a2d25335d0b65ef3b219af7b4aff014f84741d63fa"
+  },
+  "nodeGroups": [],
+  "id": "MeNECq6KjAWwNps0",
+  "tags": []
+}

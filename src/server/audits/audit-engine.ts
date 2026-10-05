@@ -277,7 +277,7 @@ async function uploadDataUrl(admin: ReturnType<typeof createSupabaseAdminClient>
   return path;
 }
 
-export async function runWebsiteAudit(leadId: string): Promise<AuditRunResult> {
+export async function runWebsiteAudit(leadId: string, options: { replyReport?: boolean } = {}): Promise<AuditRunResult> {
   const admin = createSupabaseAdminClient();
   const { data: leadData, error: leadError } = await admin.from("lead_pipeline").select("*").eq("id", leadId).maybeSingle();
   if (leadError) throw new Error(`Could not load audit lead: ${leadError.message}`);
@@ -322,7 +322,7 @@ export async function runWebsiteAudit(leadId: string): Promise<AuditRunResult> {
     duplicateCount: numberValue(lead.duplicate_count),
     leadStatus: text(lead.status),
     approvalStatus: text(lead.approval_status),
-    gmailMessageId: text(lead.gmail_message_id) || null,
+    gmailMessageId: options.replyReport ? null : text(lead.gmail_message_id) || null,
   });
 
   const screenshotData = mobile.screenshotData ?? desktop.screenshotData;
@@ -403,11 +403,13 @@ export async function runWebsiteAudit(leadId: string): Promise<AuditRunResult> {
     audit_error_code: audit.errorCode,
     audit_error_message: audit.errorMessage,
     website_screenshot_url: screenshotPath,
+    ...(options.replyReport ? {} : {
     email_preview_status: successful ? "pending_generation" : "blocked",
     status: successful ? "email_draft_pending" : "audit_needs_review",
     next_action: successful ? "generate_evidence_email" : "manual_review",
     next_workflow: successful ? "03 - Personalized Email Outreach" : null,
     human_review_required: !successful,
+    }),
     updated_at: new Date().toISOString(),
   };
   const { error: updateError } = await admin.from("lead_pipeline").update(leadUpdate).eq("id", leadId);

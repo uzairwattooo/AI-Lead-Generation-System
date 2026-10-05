@@ -347,6 +347,7 @@ export interface ReplyRecord {
 }
 
 export interface MeetingRecord {
+  meetingTimezone?: string;
   id: string;
   leadId: string;
   companyName: string;

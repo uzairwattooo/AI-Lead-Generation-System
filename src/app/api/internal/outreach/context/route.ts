@@ -5,6 +5,7 @@ import { z } from "zod";
 import { apiError, handleRouteError } from "@/server/api";
 import { evaluateAuditOutreachSafety } from "@/server/audits/audit-safety";
 import { requireN8nSecret } from "@/server/internal-auth";
+import { validateEvidenceDraft } from "@/server/outreach/draft-safety";
 import { buildEvidenceEmailPrompt } from "@/server/outreach/email-template";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { serverEnv } from "@/server/env";
@@ -57,6 +58,9 @@ export async function POST(request: Request) {
     if (lead.email_preview_status !== "approved" || !lead.outreach_approved_at || !lead.outreach_subject || !lead.outreach_html_body) {
       return apiError("The evidence-based email draft has not been approved.", 409);
     }
+    const draftErrors = validateEvidenceDraft({ subject: lead.outreach_subject, body: String(lead.outreach_plain_text_body || lead.outreach_body || "").split(/\n\nBest regards,/i)[0] || "", findingCodes: findings.slice(0, 2).map((finding) => finding.code), verifiedFindings: findings });
+    // Old approved drafts may still contain the attachment/booking language. Require a fresh preview.
+    if (draftErrors.some((message) => /First-touch|unresolved|unapproved/.test(message))) return apiError("Regenerate and approve the new first-touch email before sending.", 409);
     const sendKey = randomUUID();
     const { data: claimed, error: claimError } = await admin.from("lead_pipeline").update({ outreach_status: "sending", outreach_send_key: sendKey, updated_at: new Date().toISOString() }).eq("id", lead.id).eq("email_preview_status", "approved").is("gmail_message_id", null).neq("outreach_status", "sending").select("id").maybeSingle();
     if (claimError) throw new Error(`Could not claim outreach send: ${claimError.message}`);

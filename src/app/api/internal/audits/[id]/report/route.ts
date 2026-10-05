@@ -11,7 +11,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const admin = createSupabaseAdminClient();
-    const { data: audit, error } = await admin.from("website_audits").select("report_path, report_filename").eq("lead_id", id).not("report_path", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const {data: lead,error: leadError} = await admin.from("lead_pipeline").select("audit_id,audit_status,do_not_contact").eq("id",id).maybeSingle();
+    if (leadError) throw new Error(leadError.message);
+    if (!lead || lead.do_not_contact || lead.audit_status !== "audit_completed" || !lead.audit_id) return apiError("A current verified report is required.",409);
+    const { data: audit, error } = await admin.from("website_audits").select("report_path, report_filename").eq("lead_id", id).eq("id",lead.audit_id).not("report_path", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (error) throw new Error(`Could not load audit attachment: ${error.message}`);
     if (!audit?.report_path) return apiError("Audit attachment not found.", 404);
     const { data, error: downloadError } = await admin.storage.from(serverEnv.auditStorageBucket).download(audit.report_path);

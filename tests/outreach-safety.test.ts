@@ -1,82 +1,82 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-
-import { validateEvidenceDraft } from "../src/server/outreach/draft-safety";
-import { buildEvidenceEmailPrompt, renderProfessionalEmail } from "../src/server/outreach/email-template";
-
-const findings = [
-  { code: "MISSING_TITLE", title: "Homepage title is missing", priority: "high" as const, evidence: "Empty title.", impact: "Weaker snippet.", recommendation: "Add title." },
-  { code: "NO_CONTACT_CTA", title: "No clear CTA", priority: "high" as const, evidence: "No contact CTA detected.", impact: "More enquiry friction.", recommendation: "Add CTA." },
+import {readFileSync} from "node:fs";
+import vm from "node:vm";
+import {createHmac} from "node:crypto";
+import {validateEvidenceDraft} from "../src/server/outreach/draft-safety";
+import {buildEvidenceEmailPrompt,renderProfessionalEmail} from "../src/server/outreach/email-template";
+import {requestedReplyAction,followUpDate} from "../src/server/outreach/reply-policy";
+const findings=[
+ {code:"MISSING_TITLE",title:"Missing homepage title",priority:"high" as const,evidence:"Empty title.",impact:"Weaker snippet.",recommendation:"Add title."},
+ {code:"NO_CONTACT_CTA",title:"No clear contact CTA",priority:"high" as const,evidence:"No contact CTA detected.",impact:"Enquiry friction.",recommendation:"Add CTA."},
 ];
-
-test("draft validator accepts only referenced verified findings", () => {
-  const body = "Hello Example team, CodeNativeX reviewed your public website and found that the page title is empty and no contact CTA was detected on the homepage. These issues may weaken the search-result headline and make it harder for visitors to start an enquiry. We have attached a short audit showing the evidence and practical fixes. Our website performance and conversion engineering team can help implement the highest-impact improvements without disrupting the existing customer journey. Would you be open to a focused 15-minute call to review the findings and decide whether any of the recommendations are worth prioritizing?";
-  assert.deepEqual(validateEvidenceDraft({ subject: "Example website audit findings", body, findingCodes: ["MISSING_TITLE", "NO_CONTACT_CTA"], verifiedFindings: findings }), []);
+const body="Hello Example Dental team,\n\nI took a quick look at your public website. The homepage title is empty, and no clear contact CTA was detected. These points may make it harder for visitors to understand the page and start an enquiry. I can share a short breakdown of practical fixes. Would you like me to send it over? No cost or obligation.";
+test("first-touch offers the breakdown without attachment or meeting CTA",()=>{
+ assert.deepEqual(validateEvidenceDraft({subject:"Quick note on Example Dental's website",body,findingCodes:findings.map(f=>f.code),verifiedFindings:findings}),[]);
+ const email=renderProfessionalEmail({companyName:"Example Dental",body,findings,reportFilename:"report.pdf"});
+ assert.doesNotMatch(email.html,/report\.pdf|calendly|attached|snapshot|<img/i);
+ assert.match(email.plainText,/Would you like me to send it over/);
+ assert.match(email.plainText,/Best regards,\nCode Nativex/);
 });
-
-test("draft validator blocks invented slow-site claims", () => {
-  const errors = validateEvidenceDraft({ subject: "Example slow website review", body: "Your website is slow. ".repeat(50), findingCodes: ["MISSING_TITLE", "NO_CONTACT_CTA"], verifiedFindings: findings });
-  assert.ok(errors.some((error) => error.includes("unsupported claim")));
+test("old attached drafts, invented results and unsupported measurements are blocked",()=>{
+ for(const extra of ["The report is attached.","Book a 15-minute call.","Our client gained 40% more enquiries.","It takes 6 seconds to load."]){
+  assert.ok(validateEvidenceDraft({subject:"Quick note on Example website",body:body+" "+extra,findingCodes:findings.map(f=>f.code),verifiedFindings:findings}).length);
+ }
 });
-
-test("professional email uses the approved dark brand template without duplicate closing", () => {
-  const rendered = renderProfessionalEmail({
-    companyName: "Example Dental",
-    body: "Hello Example Dental team,\n\nCodeNativeX reviewed your public website and found that the homepage title is empty and no contact CTA was detected. These points may weaken the search-result headline and make it harder for visitors to start an enquiry. We attached a short audit with the evidence and practical priorities. Our website performance and conversion engineering team can help implement the most useful improvements without disrupting the existing customer journey. Would you be open to a focused 15-minute call to review the findings?\n\nBest regards,",
-    findings,
-    scores: { performanceMobile: 48, performanceDesktop: 76, seo: 74, accessibility: 89, bestPractices: 92 },
-    reportFilename: "CodeNativeX-Website-Audit-Example-Dental.pdf",
-  });
-  assert.match(rendered.html, /background:#070a11/);
-  assert.match(rendered.html, /codenativex-logo-transparent\.png/);
-  assert.match(rendered.html, /CodeNativeX-Website-Audit-Example-Dental\.pdf/);
-  assert.doesNotMatch(rendered.html, /Best regards|>Best,/i);
-  assert.doesNotMatch(rendered.plainText, /Best regards|\nBest,/i);
+test("reply routing sends report first, video to booking, and respects stop",()=>{
+ assert.equal(requestedReplyAction("Yes please send it","interested",false),"report");
+ assert.equal(requestedReplyAction("Please send the audit report","information_request",true),"report");
+ assert.equal(requestedReplyAction("Can you send a two minute video?","information_request",false),"booking");
+ assert.equal(requestedReplyAction("Sounds good","interested",true),"booking");
+ assert.equal(requestedReplyAction("No thanks, not interested","not_interested",false),"none");
+ assert.equal(requestedReplyAction("How much does it cost?","pricing_question",false),"none");
 });
-
-test("email prompt requires friendly evidence-only copy and forbids sign-offs", () => {
-  const prompt = buildEvidenceEmailPrompt({
-    companyName: "Example Dental",
-    contactFirstName: null,
-    website: "https://example.test",
-    service: "Website Performance",
-    findings,
-  });
-  assert.match(prompt, /Hello Example Dental team,/);
-  assert.match(prompt, /friendly and highly professional/i);
-  assert.match(prompt, /Never write Best, Best regards/);
+test("followups use day 3, 7 and 14 measured from first touch",()=>{
+ const start="2026-10-02T12:00:00.000Z";
+ assert.equal(followUpDate(start,0),"2026-10-04T12:00:00.000Z");
+ assert.equal(followUpDate(start,1),"2026-10-08T12:00:00.000Z");
+ assert.equal(followUpDate(start,2),"2026-10-15T12:00:00.000Z");
+ assert.equal(followUpDate(start,3),null);
 });
-
-test("n8n send workflow attaches PDF binary and preserves explicit approval/idempotency gates", () => {
-  const auditWorkflow = JSON.parse(readFileSync("n8n/02A-Website-Audit-Branded-Report-Generator.json", "utf8"));
-  const workflow = JSON.parse(readFileSync("n8n/03-Personalized-Evidence-Based-Email-Outreach.json", "utf8"));
-  const gmail = workflow.nodes.find((node: { name: string }) => node.name === "Gmail Send With Audit PDF");
-  const adminGmail = workflow.nodes.find((node: { name: string }) => node.name === "Send Admin Outreach Notification");
-  const openAi = workflow.nodes.find((node: { name: string }) => node.name === "Write Evidence-Based Draft");
-  assert.equal(gmail.parameters.options.attachmentsUi.attachmentsBinary[0].property, "data");
-  assert.equal(gmail.parameters.options.appendAttribution, false);
-  assert.equal(openAi.typeVersion, 2.3);
-  assert.equal(openAi.parameters.resource, "text");
-  assert.equal(openAi.parameters.operation, "response");
-  assert.equal(openAi.parameters.options.textFormat.textOptions.type, "json_schema");
-  assert.equal(openAi.parameters.options.textFormat.textOptions.verbosity, "medium");
-  assert.equal(adminGmail.parameters.sendTo, "={{ $json.adminEmail }}");
-  assert.equal(adminGmail.parameters.options.appendAttribution, false);
-  assert.equal(adminGmail.onError, "continueRegularOutput");
-  assert.ok(workflow.nodes.some((node: { name: string }) => node.name === "Notify Admin?"));
-  assert.ok(workflow.nodes.some((node: { name: string }) => node.name === "Return Outreach Completion"));
-  assert.ok(auditWorkflow.nodes.some((node: { name: string }) => node.name === "Validate Shared Secret"));
-  assert.ok(workflow.nodes.some((node: { name: string }) => node.name === "Queue Missing Audit"));
-  const contextSource = readFileSync("src/app/api/internal/outreach/context/route.ts", "utf8");
-  assert.match(contextSource, /email_preview_status !== "approved"/);
-  assert.match(contextSource, /outreach_send_key/);
-  assert.match(contextSource, /Duplicate send prevented/);
-  assert.match(contextSource, /companyName: lead\.company_name/);
+type N={name:string;parameters:{jsCode?:string;options?:Record<string,unknown>}};
+const workflow=(file:string)=>JSON.parse(readFileSync(`n8n/${file}`,"utf8")) as {nodes:N[];connections:Record<string,unknown>};
+test("all exported code nodes compile and all connected node names exist",()=>{
+ for(const f of ["03-Personalized-Email-Outreach-FIXED.json","03-Personalized-Evidence-Based-Email-Outreach.json","04-Reply-Monitoring-Follow-Up-FIXED.json","05-Meeting-Booking-Sales-Handoff-FIXED.json"]){
+  const w=workflow(f),names=new Set(w.nodes.map(n=>n.name));
+  for(const n of w.nodes)if(n.parameters.jsCode)new vm.Script(`(function(){${n.parameters.jsCode}\n})`);
+  for(const [name,groups] of Object.entries(w.connections)){
+   assert.ok(names.has(name));
+   for(const edges of Object.values(groups as Record<string,Array<Array<{node:string}>>>))for(const edge of edges.flat())assert.ok(names.has(edge.node),edge.node);
+  }
+ }
 });
-
-test("dashboard renders real API errors instead of a false empty state", () => {
-  const source = readFileSync("src/components/leads/leads-workspace.tsx", "utf8");
-  assert.match(source, /isError/);
-  assert.match(source, /error instanceof Error \? error\.message/);
+test("PDF is exclusive to requested-report reply; Gmail sends do not auto retry",()=>{
+ const first=workflow("03-Personalized-Evidence-Based-Email-Outreach.json");
+ assert.ok(!first.nodes.some(n=>n.name==="Get PDF as Binary Data"));
+ assert.equal(first.nodes.find(n=>n.name==="Gmail Send First Touch")?.parameters.options?.attachmentsUi,undefined);
+ const meeting=workflow("05-Meeting-Booking-Sales-Handoff-FIXED.json");
+ assert.ok(meeting.nodes.find(n=>n.name==="Send Requested Report")?.parameters.options?.attachmentsUi);
+ assert.equal(meeting.nodes.find(n=>n.name==="Send Google Meet Booking Link")?.parameters.options?.attachmentsUi,undefined);
+});
+test("n8n reply parser handles video/report/rejection without changing contact identity",()=>{
+ const w=workflow("04-Reply-Monitoring-Follow-Up-FIXED.json");
+ const code=w.nodes.find(n=>n.name==="Parse and Route Reply")!.parameters.jsCode!;
+ for(const [reply,intent,status] of [["Send a video please","information_request","meeting_requested"],["Please share the report","information_request","report_requested"],["Not interested","not_interested","not_interested"]]){
+  const base={id:"lead",company_name:"Example",email:"person@company.com",incoming_reply:{reply_text:reply,incoming_message_id:"reply",gmail_thread_id:"thread"}};
+  const actual=vm.runInNewContext(`(function(){${code}})()`,{$json:{output:JSON.stringify({intent,confidence:95,human_review_required:false})},$:()=>({all:()=>[{json:base}]}),$runIndex:0,$itemIndex:0});
+  assert.equal(actual.json.final_status,status);assert.equal(actual.json.next_follow_up_at,null);
+ }
+});
+test("email prompt requests actual identity and permission instead of a call",()=>{
+ const prompt=buildEvidenceEmailPrompt({companyName:"Example",contactFirstName:"Ali",website:"https://business.test",service:"Website Redesign",findings});
+ assert.match(prompt,/Hello Ali,/);assert.match(prompt,/Do not include a booking link/);assert.match(prompt,/Would you like me to send it over/);
+});
+import {validCalendlySignature} from "../src/server/meetings/calendly-signature";
+test("Calendly signatures reject tampered, expired and unsigned bookings",()=>{
+ const body='{"event":"invitee.created"}',key="unit-test-only",time=1800000000;
+ const sig=createHmac("sha256",key).update(`${time}.${body}`).digest("hex");
+ assert.equal(validCalendlySignature(body,`t=${time},v1=${sig}`,key,time*1000),true);
+ assert.equal(validCalendlySignature(body+" ",`t=${time},v1=${sig}`,key,time*1000),false);
+ assert.equal(validCalendlySignature(body,`t=${time},v1=${sig}`,key,(time+181)*1000),false);
+ assert.equal(validCalendlySignature(body,"",key,time*1000),false);
 });

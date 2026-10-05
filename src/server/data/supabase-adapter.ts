@@ -564,8 +564,9 @@ function mapMeeting(row: Row): MeetingRecord {
     status,
     scheduledFor: start,
     durationMinutes: duration,
+    meetingTimezone: nullableStr(row,"meeting_timezone") ?? undefined,
     meetingUrl: nullableStr(row, "meeting_link") ?? nullableStr(row, "calendar_event_url"),
-    notes: nullableStr(row, "error_message") ?? nullableStr(row, "sales_handoff_status"),
+    notes: nullableStr(row, "error_message") ?? (str(row, "provider") === "google_meet" ? `Google Meet · ${str(row, "meeting_timezone") || "UTC"}${str(row, "meeting_link") ? "" : " · conferencing link pending"}` : nullableStr(row, "sales_handoff_status")),
     createdAt: str(row, "created_at"),
   };
 }
@@ -1082,7 +1083,11 @@ export class SupabaseAdapter implements LeadRepository {
   }
 
   async listMeetings(): Promise<MeetingRecord[]> {
-    const rows = await this.rows(TABLES.meetings);
+    const [legacyRows, calendlyRows] = await Promise.all([
+      this.rows(TABLES.meetings),
+      this.rows("codenativex_calendly_bookings"),
+    ]);
+    const rows = [...legacyRows, ...calendlyRows];
     const leadIds = [...new Set(rows.map((row) => str(row, "lead_id")).filter(Boolean))];
     const leadRows = leadIds.length
       ? await this.rows(TABLES.leads, (query) => query.in("id", leadIds))

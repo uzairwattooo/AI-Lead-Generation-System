@@ -27,7 +27,7 @@ export function MeetingsClient() {
     <>
       <PageHeader
         title="Meetings"
-        description="Requested and booked meetings created from interested replies."
+        description="Confirmed Calendly bookings with Google Meet details."
       />
 
       <Card>
@@ -43,7 +43,7 @@ export function MeetingsClient() {
           <EmptyState
             icon={CalendarCheck}
             title="No meetings yet"
-            description="Meetings appear here once a lead accepts a call."
+            description="Meetings appear here after the client confirms a booking."
           />
         ) : (
           <TableWrapper>
@@ -71,7 +71,10 @@ export function MeetingsClient() {
                       ) : null}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {formatDateTime(meeting.scheduledFor)}
+                      {meeting.meetingTimezone && meeting.scheduledFor
+                        ? new Date(meeting.scheduledFor).toLocaleString("en-GB", {timeZone: meeting.meetingTimezone})
+                        : formatDateTime(meeting.scheduledFor)}
+                      {meeting.meetingTimezone ? <span className="block text-[11px] text-[var(--app-text-subtle)]">{meeting.meetingTimezone}</span> : null}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs tabular-nums">
                       {meeting.durationMinutes} min
@@ -80,7 +83,7 @@ export function MeetingsClient() {
                       <MeetingBadge status={meeting.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      {meeting.meetingUrl ? (
+                      {meeting.meetingUrl && meeting.status !== "cancelled" ? (
                         <Button asChild variant="ghost" size="sm">
                           <a href={meeting.meetingUrl} target="_blank" rel="noopener noreferrer">
                             Join
