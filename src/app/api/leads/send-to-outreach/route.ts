@@ -5,7 +5,13 @@ import { apiError, handleRouteError, requireSession } from "@/server/api";
 import { getRepositoryContext } from "@/server/data";
 import { dispatchToN8n } from "@/server/n8n";
 
-const schema = z.object({ leadIds: z.array(z.string().min(1)).min(1, "Select at least one lead") });
+const schema = z.object({
+  leadIds: z.array(z.string().min(1)).min(1, "Select at least one lead"),
+  options: z.object({
+    prepareAuditReport: z.boolean(),
+    enableBookingLink: z.boolean(),
+  }).default({ prepareAuditReport: true, enableBookingLink: true }),
+});
 
 /** Starts evidence-based audit + email preparation for approved leads. */
 export async function POST(request: Request) {
@@ -16,7 +22,7 @@ export async function POST(request: Request) {
     if (!parsed.success) return apiError("No leads were selected.", 422, parsed.error.issues);
 
     const { repository } = await getRepositoryContext();
-    const records = await repository.sendToOutreach(parsed.data.leadIds);
+    const records = await repository.sendToOutreach(parsed.data.leadIds, parsed.data.options);
 
     if (records.length === 0) {
       return apiError(

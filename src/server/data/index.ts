@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isDemoMode } from "@/server/env";
+import { isDemoMode, serverEnv } from "@/server/env";
+import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { DemoAdapter } from "./demo-adapter";
 import { SupabaseAdapter } from "./supabase-adapter";
 import type { LeadRepository } from "./repository";
@@ -28,7 +29,17 @@ export async function getRepositoryContext(): Promise<RepositoryContext> {
 
   const { data } = await supabase.auth.getUser();
   const userEmail = data.user?.email ?? "unknown@codenativex.com";
-  return { repository: new SupabaseAdapter(supabase, userEmail), userEmail };
+
+  // Dashboard and tools routes authenticate before they request a repository.
+  // Use the server-only service-role client for database access so candidate
+  // inventory is not silently hidden by incomplete/legacy RLS policies. The
+  // key never reaches the browser, while the route-level session/shared-secret
+  // guards continue to control who can access these records.
+  const dataClient = serverEnv.supabaseServiceRoleKey
+    ? createSupabaseAdminClient()
+    : supabase;
+
+  return { repository: new SupabaseAdapter(dataClient, userEmail), userEmail };
 }
 
 export type { LeadRepository } from "./repository";

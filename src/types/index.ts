@@ -262,6 +262,10 @@ export interface LeadNote {
 
 export interface Lead {
   id: string;
+  /** Raw discovery record. Present even when intake never created a pipeline row. */
+  candidateId: string | null;
+  /** Existing lead_pipeline row used by audit and outreach, when available. */
+  pipelineLeadId: string | null;
   requestId: string;
   companyName: string;
   category: string;
@@ -289,12 +293,22 @@ export interface Lead {
   approvalStatus: ApprovalStatus;
   rejectionReason: string | null;
   outreachStatus: OutreachStatus;
+  /** Top discovery recommendation only; it never hides or rejects other leads. */
+  isRecommended: boolean;
+  recommendationRank: number | null;
   isPossibleDuplicate: boolean;
   duplicateOfLeadId: string | null;
   sourceLinks: DataSourceLink[];
   verificationHistory: VerificationEvent[];
   notes: LeadNote[];
   discoveredAt: string;
+}
+
+export interface OutreachPreparationOptions {
+  /** Audit evidence is always generated; the PDF is sent only after the lead asks for it. */
+  prepareAuditReport: boolean;
+  /** A video request is answered with the configured meeting-booking link. */
+  enableBookingLink: boolean;
 }
 
 /* -------------------------------------------------------------------------- */

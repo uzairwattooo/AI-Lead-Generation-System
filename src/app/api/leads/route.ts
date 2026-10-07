@@ -34,14 +34,18 @@ export async function GET(request: NextRequest) {
       verification: listParam(params, "verification"),
       outreach: listParam(params, "outreach"),
       approval: listParam(params, "approval"),
+      contact: listParam(params, "contact"),
+      recommendedOnly: params.get("recommendedOnly") === "true",
       minScore: numberParam(params, "minScore"),
       maxScore: numberParam(params, "maxScore"),
-      sortBy: params.get("sortBy") ?? "score",
+      sortBy: params.get("sortBy") ?? "recommended",
       sortDir: params.get("sortDir") === "asc" ? "asc" : "desc",
     };
 
     const { repository } = await getRepositoryContext();
-    return NextResponse.json(await repository.listLeads(query));
+    return NextResponse.json(await repository.listLeads(query), {
+      headers: { "cache-control": "no-store" },
+    });
   } catch (error) {
     return handleRouteError(error);
   }

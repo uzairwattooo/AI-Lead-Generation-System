@@ -17,7 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { ApprovalBadge, OutreachBadge, ScoreBadge, VerificationBadge } from "@/components/status-badges";
+import { ApprovalBadge, OutreachBadge, VerificationBadge } from "@/components/status-badges";
 import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,7 +55,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
     <>
       <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <ScoreBadge score={lead.score} />
+          {lead.isRecommended ? <Badge tone="success">Recommended #{lead.recommendationRank ?? 2}</Badge> : null}
           <VerificationBadge status={lead.verificationStatus} />
           <ApprovalBadge status={lead.approvalStatus} />
           <OutreachBadge status={lead.outreachStatus} />
@@ -65,7 +65,6 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
         <Tabs defaultValue="business" className="mt-4">
           <TabsList>
             <TabsTrigger value="business">Business</TabsTrigger>
-            <TabsTrigger value="score">Score</TabsTrigger>
             <TabsTrigger value="audit">Audit</TabsTrigger>
             <TabsTrigger value="verification">Verification</TabsTrigger>
             <TabsTrigger value="outreach">Outreach</TabsTrigger>
@@ -235,37 +234,6 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
                 </ul>
               )}
             </section>
-          </TabsContent>
-
-          <TabsContent value="score">
-            {!lead.scoreBreakdown ? (
-              <EmptyState title="No score breakdown" description="The backend did not return a breakdown for this lead." />
-            ) : (
-              <div className="space-y-3">
-                {lead.scoreBreakdown.components.map((component) => (
-                  <div key={component.key}>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-medium">{component.label}</span>
-                      <span className="text-xs tabular-nums text-[var(--app-text-muted)]">
-                        {component.score} / {component.maxScore}
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--app-panel-muted)]">
-                      <div
-                        className="h-full rounded-full bg-[var(--app-primary)]"
-                        style={{ width: `${(component.score / component.maxScore) * 100}%` }}
-                      />
-                    </div>
-                    {component.rationale ? (
-                      <p className="mt-1 text-[11px] text-[var(--app-text-subtle)]">{component.rationale}</p>
-                    ) : null}
-                  </div>
-                ))}
-                <p className="border-t border-[var(--app-border)] pt-3 text-xs text-[var(--app-text-muted)]">
-                  Total {lead.scoreBreakdown.total} · calculated {formatDateTime(lead.scoreBreakdown.calculatedAt)}
-                </p>
-              </div>
-            )}
           </TabsContent>
 
           <TabsContent value="audit" className="space-y-4">

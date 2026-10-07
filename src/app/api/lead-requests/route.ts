@@ -51,6 +51,10 @@ export async function POST(request: NextRequest) {
         requestId: created.id,
         requestedBy: session.email,
         criteria: parsed.data,
+        processingMode: "human_review",
+        stopAfterDiscovery: true,
+        keepAllDiscovered: true,
+        recommendedLeadCount: 2,
       });
     } catch (error) {
       if (error instanceof N8nDispatchError) {

@@ -58,7 +58,9 @@ export function MultiSelect({
 
   return (
     <div className="space-y-2">
-      <DropdownMenu>
+      {/* Non-modal keeps the persistent dashboard navigation available while
+          the business-type list is open. */}
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <button
             id={id}

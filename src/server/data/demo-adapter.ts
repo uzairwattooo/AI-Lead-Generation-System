@@ -162,6 +162,8 @@ function compareLeads(a: Lead, b: Lead, sortBy: string, dir: "asc" | "desc"): nu
       return `${a.city ?? ""}${a.country}`.localeCompare(`${b.city ?? ""}${b.country}`) * factor;
     case "discoveredAt":
       return (Date.parse(a.discoveredAt) - Date.parse(b.discoveredAt)) * factor;
+    case "recommended":
+      return ((a.recommendationRank ?? 9999) - (b.recommendationRank ?? 9999)) * (dir === "desc" ? 1 : -1);
     case "score":
     default:
       return (a.score - b.score) * factor;
@@ -349,6 +351,10 @@ export class DemoAdapter implements LeadRepository {
       if (!matchesFilter(query.verification, lead.verificationStatus)) return false;
       if (!matchesFilter(query.outreach, lead.outreachStatus)) return false;
       if (!matchesFilter(query.approval, lead.approvalStatus)) return false;
+      if (query.recommendedOnly && !lead.isRecommended) return false;
+      if (query.contact?.includes("has_email") && !lead.email) return false;
+      if (query.contact?.includes("has_phone") && !lead.phone) return false;
+      if (query.contact?.includes("has_website") && !lead.website) return false;
       if (query.location) {
         const location = `${lead.city ?? ""} ${lead.region ?? ""} ${lead.country}`.toLowerCase();
         if (!location.includes(query.location.toLowerCase())) return false;
@@ -425,7 +431,7 @@ export class DemoAdapter implements LeadRepository {
     const created: OutreachRecord[] = [];
     for (const id of ids) {
       const lead = store.leads.find((item) => item.id === id);
-      if (!lead || lead.approvalStatus !== "approved") continue;
+      if (!lead || lead.approvalStatus !== "approved" || !lead.email) continue;
       if (store.outreach.some((record) => record.leadId === lead.id)) continue;
       const record: OutreachRecord = {
         id: nextId("out"),

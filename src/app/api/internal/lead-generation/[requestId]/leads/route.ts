@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ requ
       page: 1,
       pageSize: 100,
       requestId,
-      sortBy: "score",
+      sortBy: "recommended",
       sortDir: "desc",
     });
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });

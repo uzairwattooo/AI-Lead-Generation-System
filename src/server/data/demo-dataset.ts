@@ -289,6 +289,8 @@ export function buildDemoDataset(): DemoDataset {
 
       leads.push({
         id: `lead_${String(leadIndex).padStart(4, "0")}`,
+        candidateId: `lead_${String(leadIndex).padStart(4, "0")}`,
+        pipelineLeadId: approval === "approved" ? `lead_${String(leadIndex).padStart(4, "0")}` : null,
         requestId: request.id,
         companyName,
         category,
@@ -330,6 +332,8 @@ export function buildDemoDataset(): DemoDataset {
         approvalStatus: approval,
         rejectionReason: approval === "rejected" ? "Website already modern" : null,
         outreachStatus,
+        isRecommended: i < 2,
+        recommendationRank: i < 2 ? i + 1 : null,
         isPossibleDuplicate: random() > 0.92,
         duplicateOfLeadId: null,
         sourceLinks: [

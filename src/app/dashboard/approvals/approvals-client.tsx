@@ -41,9 +41,8 @@ export function ApprovalsClient() {
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p>
-            {settings.autoApproveLeads
-              ? `Automatic approval is enabled. Leads scoring ${settings.minimumApprovalScore} or above enter outreach without a manual decision.`
-              : `Automatic approval is off. Every lead needs a manual decision, and the minimum approval score is ${settings.minimumApprovalScore}.`}
+            Human review controls outreach. Discovery records are never removed for a missing email, phone or
+            website; approve only the businesses you have reviewed and want the agent to contact.
           </p>
         </div>
       ) : null}
@@ -51,7 +50,6 @@ export function ApprovalsClient() {
       <LeadsWorkspace
         lockedApproval={PENDING_ONLY}
         showWarnings
-        minimumApprovalScore={settings?.minimumApprovalScore}
         emptyTitle="The approval queue is empty"
         emptyDescription="Every discovered lead has already been approved or rejected."
       />

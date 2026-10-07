@@ -14,6 +14,7 @@ import type {
   LeadSearchRequest,
   MeetingRecord,
   OutreachRecord,
+  OutreachPreparationOptions,
   Paginated,
   ReplyRecord,
   WorkspaceSettings,
@@ -30,6 +31,8 @@ export interface LeadListFilters {
   verification: string[];
   outreach: string[];
   approval: string[];
+  contact: string[];
+  recommendedOnly: boolean;
   minScore?: number;
   maxScore?: number;
   sortBy: string;
@@ -77,6 +80,8 @@ export const leadService = {
         verification: filters.verification,
         outreach: filters.outreach,
         approval: filters.approval,
+        contact: filters.contact,
+        recommendedOnly: filters.recommendedOnly ? "true" : undefined,
         minScore: filters.minScore,
         maxScore: filters.maxScore,
         sortBy: filters.sortBy,
@@ -93,11 +98,11 @@ export const leadService = {
   rejectLeads: (leadIds: string[], reason: string, note?: string) =>
     apiSend<{ updated: number; leads: Lead[] }>("/api/leads/reject", "POST", { leadIds, reason, note }),
 
-  sendToOutreach: (leadIds: string[]) =>
+  sendToOutreach: (leadIds: string[], options: OutreachPreparationOptions) =>
     apiSend<{ queued: number; records: OutreachRecord[]; detail: string }>(
       "/api/leads/send-to-outreach",
       "POST",
-      { leadIds },
+      { leadIds, options },
     ),
 
   regenerateAudit: (leadId: string) =>

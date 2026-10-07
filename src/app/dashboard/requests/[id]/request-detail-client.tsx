@@ -37,6 +37,7 @@ import {
 } from "@/hooks/use-lead-data";
 import { TERMINAL_REQUEST_STATUSES } from "@/lib/constants";
 import { formatDateTime, formatDuration, formatNumber } from "@/lib/format";
+import { initialSmoothProgress, nextSmoothProgress } from "@/lib/smooth-progress";
 import type { ProgressStage } from "@/types";
 
 function StageIcon({ status }: { status: ProgressStage["status"] }) {
@@ -60,9 +61,41 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
   const cancelMutation = useCancelRequest();
   const retryMutation = useRetryRequest();
   const [cancelOpen, setCancelOpen] = React.useState(false);
+  const [displayedPercent, setDisplayedPercent] = React.useState(0);
 
   const request = requestQuery.data;
   const progress = progressQuery.data;
+
+  React.useEffect(() => {
+    if (!progress) return;
+
+    const terminal = TERMINAL_REQUEST_STATUSES.includes(progress.status);
+    const effectStartedAt = performance.now();
+    const updateDisplayedProgress = () => {
+      const elapsedSinceUpdate = Math.floor((performance.now() - effectStartedAt) / 1000);
+      setDisplayedPercent((current) =>
+        current === 0
+          ? initialSmoothProgress(progress.percentComplete, progress.elapsedSeconds, terminal)
+          : nextSmoothProgress({
+              displayed: current,
+              reported: progress.percentComplete,
+              elapsedSeconds: progress.elapsedSeconds + elapsedSinceUpdate,
+              terminal,
+            }),
+      );
+    };
+
+    const initialTimer = window.setTimeout(updateDisplayedProgress, 0);
+    if (terminal) return () => window.clearTimeout(initialTimer);
+    const timer = window.setInterval(() => {
+      updateDisplayedProgress();
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [progress]);
 
   if (requestQuery.isError || progressQuery.isError) {
     const error = requestQuery.error ?? progressQuery.error;
@@ -112,14 +145,16 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
   const stats = [
     { label: "Sources checked", value: progress.sourcesChecked },
     { label: "Businesses discovered", value: progress.businessesDiscovered },
-    { label: "Duplicates removed", value: progress.duplicatesRemoved },
-    {
-  label: isLinkedIn ? "Signals rejected" : "Invalid contacts rejected",
-  value: progress.invalidContactsRejected,
-},
-    { label: "Verified leads", value: progress.verifiedLeads },
-    { label: "High-potential leads", value: progress.highPotentialLeads },
+    { label: "Recommended", value: Math.min(2, progress.verifiedLeads) },
+    { label: "Available to review", value: progress.verifiedLeads },
   ];
+  const visibleStages = progress.stages
+    .filter((stage) => ["request_queued", "lead_discovery", "finished"].includes(stage.key))
+    .map((stage) =>
+      stage.key === "finished"
+        ? { ...stage, label: "Human review ready", detail: "All discovered businesses remain visible." }
+        : stage,
+    );
 
   return (
     <>
@@ -128,7 +163,7 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
         description={`${request.service} · ${leadTypeLabel}${isLinkedIn ? "" : ` · ${request.radiusKm} km radius`} · Request ${request.id}`}
         actions={
           <>
-            {progress.verifiedLeads > 0 || isTerminal ? (
+            {progress.businessesDiscovered > 0 || isTerminal ? (
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/dashboard/leads?requestId=${request.id}`}>
                   <Users aria-hidden />
@@ -180,11 +215,11 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
                     "Waiting for the agent"}
                 </span>
               </div>
-              <span className="text-sm font-semibold tabular-nums">{progress.percentComplete}%</span>
+              <span className="text-sm font-semibold tabular-nums">{displayedPercent}%</span>
             </div>
 
             <Progress
-              value={progress.percentComplete}
+              value={displayedPercent}
               tone={progressTone}
               aria-label="Overall progress"
             />
@@ -199,7 +234,7 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
 
         <section
           aria-label="Run statistics"
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
+          className="grid grid-cols-2 gap-3 xl:grid-cols-4"
         >
           {stats.map((stat) => (
             <Card key={stat.label} className="p-3">
@@ -215,7 +250,7 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
               <CardTitle>Agent stages</CardTitle>
             </CardHeader>
             <ol className="divide-y divide-[var(--app-border)]">
-              {progress.stages.map((stage, index) => (
+              {visibleStages.map((stage, index) => (
                 <li key={stage.key} className="flex items-start gap-3 px-4 py-2.5 sm:px-5">
                   <span className="mt-0.5 shrink-0">
                     <StageIcon status={stage.status} />

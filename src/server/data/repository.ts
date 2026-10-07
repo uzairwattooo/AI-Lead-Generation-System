@@ -24,6 +24,8 @@ export interface LeadQuery {
   verification?: string[];
   outreach?: string[];
   approval?: string[];
+  contact?: string[];
+  recommendedOnly?: boolean;
   minScore?: number;
   maxScore?: number;
   sortBy?: string;
@@ -58,7 +60,7 @@ export interface LeadRepository {
     approval: "approved" | "rejected",
     rejectionReason?: string,
   ): Promise<Lead[]>;
-  sendToOutreach(ids: string[]): Promise<OutreachRecord[]>;
+  sendToOutreach(ids: string[], options?: import("@/types").OutreachPreparationOptions): Promise<OutreachRecord[]>;
   addNote(leadId: string, body: string, author: string): Promise<LeadNote>;
 
   listOutreach(): Promise<OutreachRecord[]>;

@@ -7,6 +7,7 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
   Columns3,
   Download,
   ExternalLink,
@@ -23,7 +24,6 @@ import { RejectDialog } from "@/components/leads/reject-dialog";
 import {
   ApprovalBadge,
   OutreachBadge,
-  ScoreBadge,
   VerificationBadge,
 } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,7 @@ import type { Lead, OutreachStatus, VerificationStatus } from "@/types";
 
 const COLUMNS = [
   { key: "companyName", label: "Company", sortable: true, alwaysVisible: true },
+  { key: "recommended", label: "Recommended", sortable: true },
   { key: "category", label: "Category", sortable: true },
   { key: "location", label: "Location", sortable: true },
   { key: "website", label: "Website" },
@@ -96,7 +97,6 @@ const COLUMNS = [
   { key: "decisionMaker", label: "Decision maker" },
   { key: "opportunitySignal", label: "Opportunity signal" },
   { key: "recommendedService", label: "Recommended service" },
-  { key: "score", label: "Lead score", sortable: true },
   { key: "audit", label: "Website audit" },
   { key: "verification", label: "Verification" },
   { key: "approval", label: "Approval" },
@@ -131,11 +131,13 @@ const OUTREACH_OPTIONS: OutreachStatus[] = [
   "needs_human_review",
 ];
 
-const SCORE_BANDS = [
-  { value: "all", label: "Any score", min: undefined, max: undefined },
-  { value: "high", label: "High potential (80-100)", min: 80, max: 100 },
-  { value: "medium", label: "Medium potential (60-79)", min: 60, max: 79 },
-  { value: "low", label: "Low potential (below 60)", min: 0, max: 59 },
+const CONTACT_OPTIONS = [
+  { value: "has_email", label: "Has email" },
+  { value: "has_phone", label: "Has phone" },
+  { value: "has_website", label: "Has website" },
+  { value: "missing_email", label: "Missing email" },
+  { value: "missing_phone", label: "Missing phone" },
+  { value: "missing_website", label: "Missing website" },
 ] as const;
 
 export interface LeadsWorkspaceProps {
@@ -156,7 +158,6 @@ export function LeadsWorkspace({
   emptyTitle = "No leads match these filters",
   emptyDescription = "Adjust the filters, or run a new lead search to discover more businesses.",
   showWarnings = false,
-  minimumApprovalScore,
 }: LeadsWorkspaceProps) {
   const [search, setSearch] = React.useState("");
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
@@ -166,8 +167,9 @@ export function LeadsWorkspace({
   const [location, setLocation] = React.useState("");
   const [verification, setVerification] = React.useState<string[]>([]);
   const [outreach, setOutreach] = React.useState<string[]>([]);
-  const [scoreBand, setScoreBand] = React.useState<(typeof SCORE_BANDS)[number]["value"]>("all");
-  const [sortBy, setSortBy] = React.useState("score");
+  const [contact, setContact] = React.useState<string[]>([]);
+  const [recommendedOnly, setRecommendedOnly] = React.useState(false);
+  const [sortBy, setSortBy] = React.useState("recommended");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [hiddenColumns, setHiddenColumns] = React.useState<ColumnKey[]>(DEFAULT_HIDDEN);
   const [selected, setSelected] = React.useState<string[]>([]);
@@ -183,8 +185,6 @@ export function LeadsWorkspace({
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const band = SCORE_BANDS.find((item) => item.value === scoreBand) ?? SCORE_BANDS[0];
-
   const filters: LeadListFilters = React.useMemo(
     () => ({
       page,
@@ -196,8 +196,8 @@ export function LeadsWorkspace({
       verification,
       outreach,
       approval: lockedApproval ?? [],
-      minScore: band.min,
-      maxScore: band.max,
+      contact,
+      recommendedOnly,
       sortBy,
       sortDir,
     }),
@@ -211,8 +211,8 @@ export function LeadsWorkspace({
       verification,
       outreach,
       lockedApproval,
-      band.min,
-      band.max,
+      contact,
+      recommendedOnly,
       sortBy,
       sortDir,
     ],
@@ -235,7 +235,7 @@ export function LeadsWorkspace({
   const approvedSelected = selectedLeads.filter((lead) => lead.approvalStatus === "approved");
 
   const activeFilterCount =
-    categories.length + verification.length + outreach.length + (location ? 1 : 0) + (scoreBand !== "all" ? 1 : 0);
+    categories.length + verification.length + outreach.length + contact.length + (location ? 1 : 0) + (recommendedOnly ? 1 : 0);
 
   const toggleSort = (key: string) => {
     if (sortBy === key) {
@@ -252,7 +252,8 @@ export function LeadsWorkspace({
     setVerification([]);
     setOutreach([]);
     setLocation("");
-    setScoreBand("all");
+    setContact([]);
+    setRecommendedOnly(false);
     setSearch("");
     setPage(1);
   };
@@ -278,9 +279,6 @@ export function LeadsWorkspace({
     if (!lead.phone) warnings.push("No phone");
     if (!lead.decisionMaker?.name) warnings.push("No decision maker");
     if (lead.auditStatus === "audit_failed" || lead.auditStatus === "audit_needs_review") warnings.push("Audit needs review");
-    if (typeof minimumApprovalScore === "number" && lead.score < minimumApprovalScore) {
-      warnings.push(`Below the minimum score of ${minimumApprovalScore}`);
-    }
     return warnings;
   };
 
@@ -307,24 +305,14 @@ export function LeadsWorkspace({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={scoreBand}
-                onValueChange={(value) => {
-                  setScoreBand(value as typeof scoreBand);
-                  setPage(1);
-                }}
+              <Button
+                type="button"
+                variant={recommendedOnly ? "primary" : "secondary"}
+                onClick={() => { setRecommendedOnly((current) => !current); setPage(1); }}
               >
-                <SelectTrigger className="w-48" aria-label="Filter by lead score">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCORE_BANDS.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <CheckCircle2 aria-hidden />
+                {recommendedOnly ? "Recommended only" : "All discovered leads"}
+              </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -361,6 +349,26 @@ export function LeadsWorkspace({
                       </DropdownMenuCheckboxItem>
                     ))
                   )}
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Contact availability</DropdownMenuLabel>
+                  {CONTACT_OPTIONS.map((option) => (
+                    <DropdownMenuCheckboxItem
+                      key={option.value}
+                      checked={contact.includes(option.value)}
+                      onCheckedChange={() => {
+                        setContact((current) =>
+                          current.includes(option.value)
+                            ? current.filter((item) => item !== option.value)
+                            : [...current, option.value],
+                        );
+                        setPage(1);
+                      }}
+                      onSelect={(event) => event.preventDefault()}
+                    >
+                      {option.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
 
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Verification</DropdownMenuLabel>
@@ -498,7 +506,7 @@ export function LeadsWorkspace({
                 disabled={approvedSelected.length === 0}
               >
                 <Send aria-hidden />
-                Prepare audit &amp; email
+                Mark ready for outreach
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
                 Clear
@@ -597,6 +605,12 @@ export function LeadsWorkspace({
                                 </div>
                               ) : null}
                             </div>
+                          ) : column.key === "recommended" ? (
+                            lead.isRecommended ? (
+                              <Badge tone="success">Top {lead.recommendationRank ?? 2}</Badge>
+                            ) : (
+                              <span className="text-xs text-[var(--app-text-subtle)]">Review</span>
+                            )
                           ) : column.key === "category" ? (
                             <span className="truncate text-xs">{lead.category}</span>
                           ) : column.key === "location" ? (
@@ -639,8 +653,6 @@ export function LeadsWorkspace({
                             </span>
                           ) : column.key === "recommendedService" ? (
                             <span className="block truncate text-xs">{lead.recommendedService}</span>
-                          ) : column.key === "score" ? (
-                            <ScoreBadge score={lead.score} />
                           ) : column.key === "audit" ? (
                             <span className="flex flex-wrap items-center gap-1">
                               <Badge tone={lead.auditStatus === "audit_completed" ? "success" : lead.auditStatus === "audit_failed" ? "danger" : lead.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
@@ -763,10 +775,10 @@ export function LeadsWorkspace({
       <Dialog open={outreachConfirm} onOpenChange={setOutreachConfirm}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Send approved leads to outreach?</DialogTitle>
+            <DialogTitle>Prepare approved leads for outreach?</DialogTitle>
             <DialogDescription>
-              The agent will run a verified website audit, create a branded PDF and prepare an evidence-based
-              email draft. Sending still requires explicit email approval.
+              The agent will audit the website and prepare a professional email draft. No email is sent until
+              you approve the final message.
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
@@ -784,6 +796,9 @@ export function LeadsWorkspace({
                 </li>
               ))}
             </ul>
+            <p className="mt-4 border-t border-[var(--app-border)] pt-3 text-[11px] text-[var(--app-text-muted)]">
+              If the lead asks for the report, the verified PDF is sent. A video or walkthrough request receives the configured meeting-booking link.
+            </p>
           </DialogBody>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setOutreachConfirm(false)}>
@@ -793,7 +808,10 @@ export function LeadsWorkspace({
               loading={outreachMutation.isPending}
               onClick={() =>
                 outreachMutation.mutate(
-                  approvedSelected.map((lead) => lead.id),
+                  {
+                    leadIds: approvedSelected.map((lead) => lead.id),
+                    options: { prepareAuditReport: true, enableBookingLink: true },
+                  },
                   {
                     onSuccess: () => {
                       setOutreachConfirm(false);
@@ -804,7 +822,7 @@ export function LeadsWorkspace({
               }
             >
               <Send aria-hidden />
-              Prepare audit &amp; email
+              Prepare outreach
             </Button>
           </DialogFooter>
         </DialogContent>

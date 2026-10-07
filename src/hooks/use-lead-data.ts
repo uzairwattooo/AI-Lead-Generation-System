@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { leadService, type LeadListFilters } from "@/services/lead-service";
 import { ApiError } from "@/services/http";
 import { TERMINAL_REQUEST_STATUSES } from "@/lib/constants";
-import type { WorkspaceSettings } from "@/types";
+import type { OutreachPreparationOptions, WorkspaceSettings } from "@/types";
 
 export const queryKeys = {
   overview: ["overview"] as const,
@@ -161,7 +161,8 @@ export function useRejectLeads() {
 export function useSendToOutreach() {
   const invalidate = useLeadInvalidation();
   return useMutation({
-    mutationFn: (leadIds: string[]) => leadService.sendToOutreach(leadIds),
+    mutationFn: (input: { leadIds: string[]; options: OutreachPreparationOptions }) =>
+      leadService.sendToOutreach(input.leadIds, input.options),
     onSuccess: (result) => {
       toast.success(`${result.queued} lead${result.queued === 1 ? "" : "s"} queued for audit`, {
         description: result.detail,

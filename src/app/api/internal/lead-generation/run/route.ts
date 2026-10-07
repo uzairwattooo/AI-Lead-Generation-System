@@ -33,6 +33,10 @@ export async function POST(request: Request) {
         requestId: created.id,
         requestedBy: "codenativex-tools",
         criteria: parsed.data,
+        processingMode: "human_review",
+        stopAfterDiscovery: true,
+        keepAllDiscovered: true,
+        recommendedLeadCount: 2,
       });
       return NextResponse.json({ request: created, ...dispatch }, { status: 201 });
     } catch (error) {

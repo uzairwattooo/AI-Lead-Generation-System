@@ -28,7 +28,7 @@ import type {
   WebsiteAudit,
 } from "@/types";
 import { PROGRESS_STAGE_LABELS } from "@/lib/constants";
-import { applyRequestLeadKeysFilter } from "./lead-pipeline-query";
+import { recommendedDiscoveryIds } from "./discovery-ranking";
 import { BackendNotConnectedError, type LeadFacets, type LeadQuery, type LeadRepository } from "./repository";
 
 export const TABLES = {
@@ -388,6 +388,8 @@ function mapLead(row: Row): Lead {
 
   return {
     id: str(row, "id"),
+    candidateId: nullableStr(row, "discovery_candidate_id"),
+    pipelineLeadId: str(row, "id") || null,
     requestId: str(row, "job_id"),
     companyName: str(row, "company_name"),
     category: str(row, "industry") || "Uncategorized",
@@ -423,6 +425,8 @@ function mapLead(row: Row): Lead {
     approvalStatus: (str(row, "approval_status") || "pending") as Lead["approvalStatus"],
     rejectionReason: nullableStr(row, "rejection_reason"),
     outreachStatus: normalizeOutreachStatus(str(row, "outreach_status"), str(row, "reply_intent")),
+    isRecommended: bool(row, "is_recommended"),
+    recommendationRank: typeof row["recommendation_rank"] === "number" ? num(row, "recommendation_rank") : null,
     isPossibleDuplicate: str(row, "status").toLowerCase().includes("duplicate"),
     duplicateOfLeadId: nullableStr(row, "duplicate_of_lead_id"),
     sourceLinks: [
@@ -434,6 +438,67 @@ function mapLead(row: Row): Lead {
     verificationHistory: (row["verification_history"] as Lead["verificationHistory"]) ?? [],
     notes: (row["notes"] as Lead["notes"]) ?? [],
     discoveredAt: createdAt,
+  };
+}
+
+function discoveryQuality(row: Row): number {
+  return (nullableStr(row, "email") ? 4 : 0)
+    + (nullableStr(row, "website") || nullableStr(row, "resolved_website") ? 3 : 0)
+    + (nullableStr(row, "phone") ? 2 : 0)
+    + (nullableStr(row, "source_url") ? 1 : 0);
+}
+
+function mapCandidateLead(candidate: Row, pipeline?: Row): Lead {
+  const pipelineId = pipeline ? str(pipeline, "id") : "";
+  const candidateId = str(candidate, "id");
+  const merged: Row = {
+    ...candidate,
+    ...(pipeline ?? {}),
+    id: pipelineId || candidateId,
+    discovery_candidate_id: candidateId,
+    job_id: str(candidate, "job_id"),
+    lead_key: str(candidate, "lead_key") || (pipeline ? str(pipeline, "lead_key") : ""),
+    company_name: (pipeline ? str(pipeline, "company_name") : "") || str(candidate, "company_name"),
+    website:
+      (pipeline ? nullableStr(pipeline, "website") : null)
+      ?? nullableStr(candidate, "resolved_website")
+      ?? nullableStr(candidate, "website"),
+    email: (pipeline ? nullableStr(pipeline, "email") : null) ?? nullableStr(candidate, "email"),
+    phone: (pipeline ? nullableStr(pipeline, "phone") : null) ?? nullableStr(candidate, "phone"),
+    industry: (pipeline ? str(pipeline, "industry") : "") || str(candidate, "industry") || str(candidate, "category"),
+    country: (pipeline ? str(pipeline, "country") : "") || str(candidate, "country"),
+    region:
+      (pipeline ? nullableStr(pipeline, "region") ?? nullableStr(pipeline, "state") : null)
+      ?? nullableStr(candidate, "region")
+      ?? nullableStr(candidate, "state"),
+    city: (pipeline ? nullableStr(pipeline, "city") : null) ?? nullableStr(candidate, "city"),
+    source: (pipeline ? str(pipeline, "source") : "") || str(candidate, "source"),
+    source_url: (pipeline ? nullableStr(pipeline, "source_url") : null) ?? nullableStr(candidate, "source_url"),
+    contact_name: (pipeline ? nullableStr(pipeline, "contact_name") : null) ?? nullableStr(candidate, "contact_name"),
+    job_title: (pipeline ? nullableStr(pipeline, "job_title") : null) ?? nullableStr(candidate, "job_title"),
+    service_interest: (pipeline ? str(pipeline, "service_interest") : "") || str(candidate, "service_interest"),
+    approval_status:
+      (pipeline ? str(pipeline, "approval_status") : "")
+      || str(candidate, "review_status")
+      || "pending",
+    qualification_score:
+      pipeline && typeof pipeline["qualification_score"] === "number"
+        ? num(pipeline, "qualification_score")
+        : discoveryQuality(candidate) * 10,
+    created_at: str(candidate, "created_at") || (pipeline ? str(pipeline, "created_at") : ""),
+    is_recommended: bool(candidate, "is_recommended"),
+    recommendation_rank: candidate["recommendation_rank"],
+  };
+  const lead = mapLead(merged);
+  return {
+    ...lead,
+    candidateId,
+    pipelineLeadId: pipelineId || null,
+    isRecommended: bool(candidate, "is_recommended"),
+    recommendationRank:
+      typeof candidate["recommendation_rank"] === "number"
+        ? num(candidate, "recommendation_rank")
+        : null,
   };
 }
 
@@ -716,7 +781,14 @@ export class SupabaseAdapter implements LeadRepository {
         rejected_leads: 0,
         attempt_count: 0,
         max_attempts: 3,
-        input_payload: { mode: "dashboard", criteria },
+        input_payload: {
+          mode: "dashboard",
+          processing_mode: "human_review",
+          stop_after_discovery: true,
+          keep_all_discovered: true,
+          recommended_lead_count: 2,
+          criteria,
+        },
         requested_at: new Date().toISOString(),
       })
       .select("*")
@@ -829,102 +901,156 @@ export class SupabaseAdapter implements LeadRepository {
   }
 
   async listLeads(query: LeadQuery): Promise<Paginated<Lead> & { facets: LeadFacets }> {
-    let requestLeadKeys: string[] | null = null;
-
-    if (query.requestId) {
-      const candidateRows = await this.rows(TABLES.candidates, (candidateQuery) =>
-        candidateQuery.select("lead_key").eq("job_id", query.requestId),
-      );
-      requestLeadKeys = [
-        ...new Set(candidateRows.map((row) => str(row, "lead_key")).filter(Boolean)),
-      ];
-
-      if (requestLeadKeys.length === 0) {
-        return {
-          items: [],
-          total: 0,
-          page: query.page,
-          pageSize: query.pageSize,
-          facets: { categories: [], locations: [] },
-        };
-      }
-    }
-
-    let builder = this.client.from(TABLES.leads).select("*", { count: "exact" });
-
-    builder = applyRequestLeadKeysFilter(builder, requestLeadKeys);
-    if (query.categories?.length) builder = builder.in("industry", query.categories);
-    if (query.verification?.length === 1 && query.verification[0] === "verified") {
-      builder = builder.in("email_validation_status", ["deliverable", "verified"]);
-    }
-    if (query.verification?.length === 1 && query.verification[0] === "invalid") {
-      builder = builder.in("email_validation_status", ["invalid", "undeliverable"]);
-    }
-    if (query.verification?.length === 1 && query.verification[0] === "pending") {
-      builder = builder.in("email_enrichment_status", ["pending", "processing", "verification_pending"]);
-    }
-    if (query.outreach?.length) builder = builder.in("outreach_status", query.outreach);
-    if (query.approval?.length) builder = builder.in("approval_status", query.approval);
-    if (typeof query.minScore === "number") builder = builder.gte("qualification_score", query.minScore);
-    if (typeof query.maxScore === "number") builder = builder.lte("qualification_score", query.maxScore);
-    if (query.location) builder = builder.ilike("city", `%${query.location}%`);
-    if (query.search) {
-      const term = `%${query.search}%`;
-      builder = builder.or(
-        `company_name.ilike.${term},email.ilike.${term},website.ilike.${term},city.ilike.${term}`,
-      );
-    }
-
-    const sortColumn =
-      query.sortBy === "companyName"
-        ? "company_name"
-        : query.sortBy === "discoveredAt"
-          ? "created_at"
-          : query.sortBy === "category"
-            ? "industry"
-            : query.sortBy === "location"
-              ? "city"
-              : "qualification_score";
-
-    const from = (query.page - 1) * query.pageSize;
-    const { data, error, count } = await builder
-      .order(sortColumn, { ascending: (query.sortDir ?? "desc") === "asc" })
-      .range(from, from + query.pageSize - 1);
-
-    if (error) throw new Error(`Supabase query on "${TABLES.leads}" failed: ${error.message}`);
-
-    const facetRows = await this.rows(TABLES.leads, (q) => {
-      const facetQuery = q.select("industry, city, country");
-      return applyRequestLeadKeysFilter(facetQuery, requestLeadKeys);
+    const candidateRows = await this.rows(TABLES.candidates, (candidateQuery) => {
+      let scoped = candidateQuery.limit(5000).order("created_at", { ascending: false });
+      if (query.requestId) scoped = scoped.eq("job_id", query.requestId);
+      return scoped;
     });
 
+    const candidateLeadKeys = [...new Set(candidateRows.map((row) => str(row, "lead_key")).filter(Boolean))];
+    const pipelineRows: Row[] = [];
+    for (let offset = 0; offset < candidateLeadKeys.length; offset += 200) {
+      const keys = candidateLeadKeys.slice(offset, offset + 200);
+      pipelineRows.push(...await this.rows(TABLES.leads, (leadQuery) => leadQuery.in("lead_key", keys)));
+    }
+    if (!query.requestId) {
+      const legacyRows = await this.rows(TABLES.leads, (leadQuery) =>
+        leadQuery.limit(5000).order("created_at", { ascending: false }),
+      );
+      const knownIds = new Set(pipelineRows.map((row) => str(row, "id")));
+      pipelineRows.push(...legacyRows.filter((row) => !knownIds.has(str(row, "id"))));
+    }
+
+    const pipelineByLeadKey = new Map(
+      pipelineRows
+        .map((row) => [str(row, "lead_key"), row] as const)
+        .filter(([leadKey]) => Boolean(leadKey)),
+    );
+    const candidatePipelineIds = new Set(
+      candidateRows
+        .map((row) => pipelineByLeadKey.get(str(row, "lead_key")))
+        .filter((row): row is Row => Boolean(row))
+        .map((row) => str(row, "id")),
+    );
+
+    let allLeads = [
+      ...candidateRows.map((candidate) => mapCandidateLead(candidate, pipelineByLeadKey.get(str(candidate, "lead_key")))),
+      ...(!query.requestId
+        ? pipelineRows.filter((row) => !candidatePipelineIds.has(str(row, "id"))).map(mapLead)
+        : []),
+    ];
+
+    // The migration stores the top two ranks. This fallback keeps older rows
+    // useful before the migration has ranked them; no lead is removed.
+    const groups = new Map<string, Lead[]>();
+    for (const lead of allLeads) {
+      const group = groups.get(lead.requestId) ?? [];
+      group.push(lead);
+      groups.set(lead.requestId, group);
+    }
+    allLeads = allLeads.map((lead) => {
+      if (lead.isRecommended || lead.pipelineLeadId && !lead.candidateId) return lead;
+      const group = groups.get(lead.requestId) ?? [];
+      const rank = recommendedDiscoveryIds(group).get(lead.id) ?? null;
+      return rank ? { ...lead, isRecommended: true, recommendationRank: rank } : lead;
+    });
+
+    const search = query.search?.trim().toLowerCase();
+    const contactFilters = new Set(query.contact ?? []);
+    const filtered = allLeads.filter((lead) => {
+      if (query.categories?.length && !query.categories.includes(lead.category)) return false;
+      if (query.verification?.length && !query.verification.includes(lead.verificationStatus)) return false;
+      if (query.outreach?.length && !query.outreach.includes(lead.outreachStatus)) return false;
+      if (query.approval?.length && !query.approval.includes(lead.approvalStatus)) return false;
+      if (query.recommendedOnly && !lead.isRecommended) return false;
+      if (contactFilters.has("has_email") && !lead.email) return false;
+      if (contactFilters.has("has_phone") && !lead.phone) return false;
+      if (contactFilters.has("has_website") && !lead.website) return false;
+      if (contactFilters.has("missing_email") && lead.email) return false;
+      if (contactFilters.has("missing_phone") && lead.phone) return false;
+      if (contactFilters.has("missing_website") && lead.website) return false;
+      if (query.location) {
+        const location = `${lead.city ?? ""} ${lead.region ?? ""} ${lead.country}`.toLowerCase();
+        if (!location.includes(query.location.toLowerCase())) return false;
+      }
+      if (search) {
+        const haystack = [
+          lead.companyName,
+          lead.category,
+          lead.email ?? "",
+          lead.phone ?? "",
+          lead.website ?? "",
+          lead.city ?? "",
+        ].join(" ").toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      return true;
+    });
+
+    const direction = query.sortDir === "asc" ? 1 : -1;
+    filtered.sort((a, b) => {
+      switch (query.sortBy) {
+        case "companyName":
+          return a.companyName.localeCompare(b.companyName) * direction;
+        case "category":
+          return a.category.localeCompare(b.category) * direction;
+        case "location":
+          return `${a.city ?? ""}${a.country}`.localeCompare(`${b.city ?? ""}${b.country}`) * direction;
+        case "discoveredAt":
+          return (Date.parse(a.discoveredAt) - Date.parse(b.discoveredAt)) * direction;
+        case "recommended":
+        default:
+          return ((a.recommendationRank ?? 9999) - (b.recommendationRank ?? 9999)) * (query.sortDir === "asc" ? -1 : 1);
+      }
+    });
+
+    const start = (query.page - 1) * query.pageSize;
     return {
-      items: (data as Row[]).map(mapLead),
-      total: count ?? 0,
+      items: filtered.slice(start, start + query.pageSize),
+      total: filtered.length,
       page: query.page,
       pageSize: query.pageSize,
       facets: {
-        categories: [...new Set(facetRows.map((row) => str(row, "industry")).filter(Boolean))].sort(),
-        locations: [
-          ...new Set(facetRows.map((row) => nullableStr(row, "city") ?? str(row, "country")).filter(Boolean)),
-        ].sort(),
+        categories: [...new Set(allLeads.map((lead) => lead.category).filter(Boolean))].sort(),
+        locations: [...new Set(allLeads.map((lead) => lead.city ?? lead.country).filter(Boolean))].sort(),
       },
     };
   }
 
   async getLead(id: string): Promise<Lead | null> {
-    const { data, error } = await this.client.from(TABLES.leads).select("*").eq("id", id).maybeSingle();
-    if (error) throw new Error(`Supabase query on "${TABLES.leads}" failed: ${error.message}`);
-    if (!data) return null;
-    const lead = mapLead(data as Row);
+    const { data: pipelineData, error: pipelineError } = await this.client.from(TABLES.leads).select("*").eq("id", id).maybeSingle();
+    if (pipelineError) throw new Error(`Supabase query on "${TABLES.leads}" failed: ${pipelineError.message}`);
+    const { data: candidateData, error: candidateError } = await this.client.from(TABLES.candidates).select("*").eq("id", id).maybeSingle();
+    if (candidateError) throw new Error(`Supabase query on "${TABLES.candidates}" failed: ${candidateError.message}`);
+
+    let pipeline = pipelineData as Row | null;
+    let candidate = candidateData as Row | null;
+    if (pipeline && !candidate) {
+      const leadKey = str(pipeline, "lead_key");
+      if (leadKey) {
+        const { data, error } = await this.client.from(TABLES.candidates).select("*").eq("lead_key", leadKey).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (!error && data) candidate = data as Row;
+      }
+    }
+    if (candidate && !pipeline) {
+      const leadKey = str(candidate, "lead_key");
+      if (leadKey) {
+        const { data, error } = await this.client.from(TABLES.leads).select("*").eq("lead_key", leadKey).maybeSingle();
+        if (!error && data) pipeline = data as Row;
+      }
+    }
+    if (!pipeline && !candidate) return null;
+    const lead = candidate ? mapCandidateLead(candidate, pipeline ?? undefined) : mapLead(pipeline as Row);
+    if (!pipeline) return lead;
+    const pipelineId = str(pipeline, "id");
     const notes = await this.rows(TABLES.notes, (query) =>
-      query.eq("lead_id", id).order("created_at", { ascending: false }),
+      query.eq("lead_id", pipelineId).order("created_at", { ascending: false }),
     );
     let audit = lead.audit;
     const { data: auditData, error: auditError } = await this.client
       .from(TABLES.audits)
       .select("*")
-      .eq("lead_id", id)
+      .eq("lead_id", pipelineId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -946,28 +1072,80 @@ export class SupabaseAdapter implements LeadRepository {
     approval: "approved" | "rejected",
     rejectionReason?: string,
   ): Promise<Lead[]> {
-    const { data, error } = await this.client
-      .from(TABLES.leads)
-      .update({
+    const now = new Date().toISOString();
+    const pipelineRows = await this.rows(TABLES.leads, (query) => query.in("id", ids));
+    const candidateRows = await this.rows(TABLES.candidates, (query) => query.in("id", ids));
+    const pipelineIds = pipelineRows.map((row) => str(row, "id"));
+    const candidateIds = candidateRows.map((row) => str(row, "id"));
+    const candidateLeadKeys = candidateRows.map((row) => str(row, "lead_key")).filter(Boolean);
+
+    if (pipelineIds.length) {
+      const { error } = await this.client.from(TABLES.leads).update({
         approval_status: approval,
         rejection_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
         approved_by: this.userEmail,
-        updated_at: new Date().toISOString(),
-      })
-      .in("id", ids)
-      .select("*");
-    if (error) throw new Error(`Could not update lead approval: ${error.message}`);
-    return (data as Row[]).map(mapLead);
+        updated_at: now,
+      }).in("id", pipelineIds);
+      if (error) throw new Error(`Could not update lead approval: ${error.message}`);
+    }
+    if (candidateLeadKeys.length) {
+      const { error } = await this.client.from(TABLES.leads).update({
+        approval_status: approval,
+        rejection_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
+        approved_by: this.userEmail,
+        updated_at: now,
+      }).in("lead_key", candidateLeadKeys);
+      if (error) throw new Error(`Could not update linked lead approval: ${error.message}`);
+    }
+    if (candidateIds.length) {
+      const { error } = await this.client.from(TABLES.candidates).update({
+        review_status: approval,
+        review_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
+        reviewed_by: this.userEmail,
+        reviewed_at: now,
+        updated_at: now,
+      }).in("id", candidateIds);
+      if (error) throw new Error(`Could not update discovery review: ${error.message}. Run the human-review migration first.`);
+    }
+
+    const updated = await Promise.all(ids.map((leadId) => this.getLead(leadId)));
+    return updated.filter((lead): lead is Lead => Boolean(lead));
   }
 
-  async sendToOutreach(ids: string[]): Promise<OutreachRecord[]> {
-    const rows = await this.rows(TABLES.leads, (query) => query.in("id", ids));
-    const eligibleIds = rows
+  async sendToOutreach(
+    ids: string[],
+    options: import("@/types").OutreachPreparationOptions = {
+      prepareAuditReport: true,
+      enableBookingLink: true,
+    },
+  ): Promise<OutreachRecord[]> {
+    const pipelineRows = await this.rows(TABLES.leads, (query) => query.in("id", ids));
+    const candidateRows = await this.rows(TABLES.candidates, (query) => query.in("id", ids));
+    const promotedIds: string[] = [];
+
+    for (const candidate of candidateRows) {
+      if (str(candidate, "review_status") !== "approved" || !nullableStr(candidate, "email")) continue;
+      const { data, error } = await this.client.rpc("codenativex_promote_discovery_candidate", {
+        p_candidate_id: str(candidate, "id"),
+        p_reviewed_by: this.userEmail,
+        p_prepare_report: options.prepareAuditReport,
+        p_enable_booking: options.enableBookingLink,
+      });
+      if (error) throw new Error(`Could not prepare discovered lead for outreach: ${error.message}. Run the human-review migration first.`);
+      if (typeof data === "string") promotedIds.push(data);
+    }
+
+    const rows = [
+      ...pipelineRows,
+      ...(promotedIds.length ? await this.rows(TABLES.leads, (query) => query.in("id", promotedIds)) : []),
+    ];
+    const eligibleIds = [...new Set(rows
       .filter((row) => str(row, "approval_status") === "approved")
+      .filter((row) => Boolean(nullableStr(row, "email")))
       .filter((row) => !bool(row, "do_not_contact"))
       .filter((row) => num(row, "duplicate_count") === 0)
       .filter((row) => !str(row, "gmail_message_id"))
-      .map((row) => str(row, "id"));
+      .map((row) => str(row, "id")))];
     if (eligibleIds.length === 0) return [];
     const { data, error } = await this.client
       .from(TABLES.leads)
@@ -980,6 +1158,8 @@ export class SupabaseAdapter implements LeadRepository {
         audit_error_code: null,
         audit_error_message: null,
         email_preview_status: null,
+        outreach_prepare_report: options.prepareAuditReport,
+        outreach_enable_booking_link: options.enableBookingLink,
         updated_at: new Date().toISOString(),
       })
       .in("id", eligibleIds)
@@ -1034,7 +1214,7 @@ export class SupabaseAdapter implements LeadRepository {
         outreach_status: "queued",
         status: "outreach_queued",
         next_action: "send_personalized_email",
-        next_workflow: "03 - Personalized Email Outreach",
+        next_workflow: "03 - Personalized Evidence-Based Email Outreach",
         email_preview_status: "approved",
         outreach_approved_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
