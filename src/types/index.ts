@@ -281,6 +281,7 @@ export interface Lead {
   auditBlockReason: string | null;
   emailPreviewStatus: string | null;
   outreachApprovedAt: string | null;
+  outreachVideoUrl?: string | null;
   email: string | null;
   phone: string | null;
   decisionMaker: DecisionMaker | null;

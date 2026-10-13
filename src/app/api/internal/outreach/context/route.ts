@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         recipientEmail: lead.email,
         companyName: lead.company_name,
         findings: findings.slice(0, 5),
-        prompt: buildEvidenceEmailPrompt({ companyName: lead.company_name, contactFirstName, website: homepage.finalUrl ?? lead.website ?? "", service: lead.recommended_service ?? lead.service_interest ?? "", findings: findings.slice(0, 5) }),
+        prompt: buildEvidenceEmailPrompt({ companyName: lead.company_name, contactFirstName, website: homepage.finalUrl ?? lead.website ?? "", city: lead.city, industry: lead.industry, service: lead.recommended_service ?? lead.service_interest ?? "", findings: findings.slice(0, 5) }),
       });
     }
 

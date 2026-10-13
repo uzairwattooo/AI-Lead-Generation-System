@@ -123,7 +123,7 @@ export function OutreachClient() {
                 {records.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell className="font-medium">{record.companyName}</TableCell>
-                    <TableCell className="max-w-56 truncate text-xs">
+                    <TableCell className="min-w-52 max-w-80 break-all text-xs">
                       {record.email ?? <span className="text-[var(--app-text-subtle)]">No email</span>}
                     </TableCell>
                     <TableCell>

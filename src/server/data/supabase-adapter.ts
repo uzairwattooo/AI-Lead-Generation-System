@@ -405,6 +405,7 @@ function mapLead(row: Row): Lead {
     auditBlockReason: nullableStr(row, "audit_error_message"),
     emailPreviewStatus: nullableStr(row, "email_preview_status"),
     outreachApprovedAt: nullableStr(row, "outreach_approved_at"),
+    outreachVideoUrl: nullableStr(row, "outreach_video_url"),
     email: nullableStr(row, "email"),
     phone: nullableStr(row, "phone"),
     decisionMaker: contactName || contactRole
@@ -481,6 +482,7 @@ function mapCandidateLead(candidate: Row, pipeline?: Row): Lead {
       (pipeline ? str(pipeline, "approval_status") : "")
       || str(candidate, "review_status")
       || "pending",
+    rejection_reason: (pipeline ? nullableStr(pipeline, "rejection_reason") : null) ?? nullableStr(candidate, "review_reason"),
     qualification_score:
       pipeline && typeof pipeline["qualification_score"] === "number"
         ? num(pipeline, "qualification_score")
@@ -1082,6 +1084,7 @@ export class SupabaseAdapter implements LeadRepository {
     if (pipelineIds.length) {
       const { error } = await this.client.from(TABLES.leads).update({
         approval_status: approval,
+        ...(approval === "rejected" ? { next_follow_up_at: null, next_workflow: null, outreach_approved_at: null, email_preview_status: "rejected", outreach_status: "blocked" } : {}),
         rejection_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
         approved_by: this.userEmail,
         updated_at: now,
@@ -1091,6 +1094,7 @@ export class SupabaseAdapter implements LeadRepository {
     if (candidateLeadKeys.length) {
       const { error } = await this.client.from(TABLES.leads).update({
         approval_status: approval,
+        ...(approval === "rejected" ? { next_follow_up_at: null, next_workflow: null, outreach_approved_at: null, email_preview_status: "rejected", outreach_status: "blocked" } : {}),
         rejection_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
         approved_by: this.userEmail,
         updated_at: now,
@@ -1187,6 +1191,7 @@ export class SupabaseAdapter implements LeadRepository {
   async listOutreach(): Promise<OutreachRecord[]> {
     const rows = await this.rows(TABLES.outreach);
     return rows
+      .filter((row) => str(row, "approval_status") === "approved")
       .map(mapOutreach)
       .filter((record) => record.status !== "not_queued" || record.messages.length > 0)
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
@@ -1197,6 +1202,9 @@ export class SupabaseAdapter implements LeadRepository {
     const record = sourceRow ? mapOutreach(sourceRow) : null;
     if (!record) throw new BackendNotConnectedError(`outreach/${outreachId}`);
     if (!sourceRow) throw new BackendNotConnectedError(`outreach/${outreachId}`);
+    if (str(sourceRow, "approval_status") !== "approved") {
+      throw new Error("Only an approved lead can be contacted.");
+    }
     if (!record.messages.some((message) => message.id === messageId)) {
       throw new BackendNotConnectedError(`outreach/${outreachId}/messages/${messageId}`);
     }
@@ -1221,6 +1229,7 @@ export class SupabaseAdapter implements LeadRepository {
         approved_by: this.userEmail,
       })
       .eq("id", outreachId)
+      .eq("approval_status", "approved")
       .select("*")
       .single();
     if (error) throw new Error(`Could not approve the outreach message: ${error.message}`);

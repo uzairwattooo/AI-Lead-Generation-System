@@ -3,7 +3,7 @@ import { Suspense } from "react";
 
 import { LeadsPageClient } from "./leads-client";
 
-export const metadata: Metadata = { title: "All Leads" };
+export const metadata: Metadata = { title: "New Leads" };
 
 export default function LeadsPage() {
   return (

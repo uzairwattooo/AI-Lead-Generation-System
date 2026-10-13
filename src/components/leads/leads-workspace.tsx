@@ -107,7 +107,7 @@ const COLUMNS = [
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
 
-const DEFAULT_HIDDEN: ColumnKey[] = ["phone", "recommendedService", "source"];
+const DEFAULT_HIDDEN: ColumnKey[] = ["phone", "recommendedService", "source", "category", "decisionMaker", "opportunitySignal", "discoveredAt", "verification"];
 
 const VERIFICATION_OPTIONS: VerificationStatus[] = ["verified", "pending", "unverified", "invalid"];
 const OUTREACH_OPTIONS: OutreachStatus[] = [
@@ -489,12 +489,13 @@ export function LeadsWorkspace({
                 size="sm"
                 variant="success"
                 loading={approveMutation.isPending}
+                disabled={lockedApproval?.[0] === "approved"}
                 onClick={() =>
-                  approveMutation.mutate(selected, { onSuccess: () => setSelected([]) })
+                  approveMutation.mutate(selected, { onSuccess: () => { setSelected([]); setPage(1); } })
                 }
               >
                 <ThumbsUp aria-hidden />
-                Approve selected
+                {lockedApproval?.[0] === "rejected" ? "Restore to approved" : "Approve selected"}
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setRejectTargets(selected)}>
                 <ThumbsDown aria-hidden />
@@ -585,16 +586,19 @@ export function LeadsWorkspace({
                       </TableCell>
 
                       {visibleColumns.map((column) => (
-                        <TableCell key={column.key} className="max-w-56">
+                        <TableCell key={column.key} className={column.key === "email" ? "min-w-52 max-w-80" : "max-w-56"}>
                           {column.key === "companyName" ? (
                             <div className="min-w-0">
                               <button
                                 type="button"
                                 onClick={() => setOpenLeadId(lead.id)}
-                                className="truncate text-left text-sm font-medium text-[var(--app-text)] hover:text-[var(--app-primary)] hover:underline"
+                                className="break-words text-left text-sm font-medium text-[var(--app-text)] hover:text-[var(--app-primary)] hover:underline"
                               >
                                 {lead.companyName}
                               </button>
+                              {lead.approvalStatus === "rejected" && lead.rejectionReason ? (
+                                <p className="mt-1 break-words text-xs text-[var(--app-text-muted)]">{lead.rejectionReason}</p>
+                              ) : null}
                               {warnings.length > 0 ? (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {warnings.map((warning) => (
@@ -607,7 +611,7 @@ export function LeadsWorkspace({
                             </div>
                           ) : column.key === "recommended" ? (
                             lead.isRecommended ? (
-                              <Badge tone="success">Top {lead.recommendationRank ?? 2}</Badge>
+                              <Badge tone="success">Recommended</Badge>
                             ) : (
                               <span className="text-xs text-[var(--app-text-subtle)]">Review</span>
                             )
@@ -633,7 +637,7 @@ export function LeadsWorkspace({
                             )
                           ) : column.key === "email" ? (
                             lead.email ? (
-                              <span className="block truncate text-xs">{lead.email}</span>
+                              <a href={`mailto:${lead.email}`} className="block min-w-48 break-all text-xs text-[var(--app-primary)] hover:underline">{lead.email}</a>
                             ) : (
                               <span className="text-xs text-[var(--app-text-subtle)]">—</span>
                             )
@@ -749,7 +753,7 @@ export function LeadsWorkspace({
       <LeadDrawer
         leadId={openLeadId}
         onOpenChange={(open) => !open && setOpenLeadId(null)}
-        onApprove={(leadId) => approveMutation.mutate([leadId])}
+        onApprove={(leadId) => approveMutation.mutate([leadId], { onSuccess: () => { setOpenLeadId(null); setPage(1); } })}
         onReject={(leadId) => setRejectTargets([leadId])}
       />
 
@@ -765,6 +769,8 @@ export function LeadsWorkspace({
             {
               onSuccess: () => {
                 setRejectTargets(null);
+                setPage(1);
+                setOpenLeadId(null);
                 setSelected([]);
               },
             },
@@ -797,7 +803,7 @@ export function LeadsWorkspace({
               ))}
             </ul>
             <p className="mt-4 border-t border-[var(--app-border)] pt-3 text-[11px] text-[var(--app-text-muted)]">
-              If the lead asks for the report, the verified PDF is sent. A video or walkthrough request receives the configured meeting-booking link.
+              If the lead asks for the report, the verified PDF is sent. A video request receives the recorded 2-minute video. General interest receives the Calendly booking link.
             </p>
           </DialogBody>
           <DialogFooter>

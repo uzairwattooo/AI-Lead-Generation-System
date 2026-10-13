@@ -19,6 +19,7 @@ import {
 
 import { ApprovalBadge, OutreachBadge, VerificationBadge } from "@/components/status-badges";
 import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
+import { LeadVideoEditor } from "@/components/outreach/lead-video-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
@@ -55,12 +56,15 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
     <>
       <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          {lead.isRecommended ? <Badge tone="success">Recommended #{lead.recommendationRank ?? 2}</Badge> : null}
+          {lead.isRecommended ? <Badge tone="success">Recommended</Badge> : null}
           <VerificationBadge status={lead.verificationStatus} />
           <ApprovalBadge status={lead.approvalStatus} />
           <OutreachBadge status={lead.outreachStatus} />
           {lead.isPossibleDuplicate ? <Badge tone="warning">Possible duplicate</Badge> : null}
         </div>
+        {lead.approvalStatus === "rejected" && lead.rejectionReason ? (
+          <p className="mt-3 text-xs text-[var(--app-text-muted)]">Review decision: {lead.rejectionReason}</p>
+        ) : null}
 
         <Tabs defaultValue="business" className="mt-4">
           <TabsList>
@@ -335,6 +339,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
           </TabsContent>
 
           <TabsContent value="outreach">
+            <LeadVideoEditor key={lead.id} leadId={lead.pipelineLeadId} videoUrl={lead.outreachVideoUrl} />
             {outreachQuery.isPending ? (
               <Skeleton className="h-24 w-full" />
             ) : !outreachRecord ? (

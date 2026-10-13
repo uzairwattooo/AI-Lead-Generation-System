@@ -40,11 +40,41 @@ export function buildEvidenceEmailPrompt(input: {
   contactFirstName: string | null;
   website: string;
   service: string;
+  city?: string | null;
+  industry?: string | null;
   findings: AuditFinding[];
 }): string {
-  const greeting = input.contactFirstName ? `Hello ${input.contactFirstName},` : `Hello ${input.companyName} team,`;
-  return `Write a concise, friendly and highly professional first website-audit email from CodeNativeX. Return strict JSON only.\n\nALLOWED EVIDENCE\n${JSON.stringify(input.findings.map(({ code, title, evidence, impact }) => ({ code, title, evidence, impact })), null, 2)}\n\nRULES\n- Start exactly with: ${greeting}\n- Say CodeNativeX reviewed the company's public website: ${input.website}.\n- Mention 1 or 2 findings from ALLOWED EVIDENCE and return their codes.\n- Explain the likely business impact carefully and naturally; never present uncertainty as fact.\n- Do not attach, link to, or claim to have attached a report. Do not include a booking link.
-- Offer a free short breakdown with practical fixes and ask: Would you like me to send it over?
-- Do not promise a video; videos are handled through a 30-minute Google Meet call after a reply.\n- Offer one service only: ${input.service || "website performance and conversion engineering"}.\n- End with one low-pressure question asking permission to send the breakdown, with no cost or obligation.\n- Body must be 60 to 120 words.\n- Do not add any sign-off, signature, sender name, website URL or opt-out line; the system adds those.\n- Never write Best, Best regards, Regards, Kind regards, Warm regards or Sincerely.\n- No hype, fake urgency, emojis, guarantees, pricing, jargon, invented facts, or claim that the company is looking for a redesign.\n- Subject: Quick note on the company website, including the actual business name.
-- Never claim a measured load time, enquiry loss, percentage improvement or case study unless explicitly established by the supplied evidence.\n\nRETURN EXACTLY\n{"subject":"","body":"","finding_codes":[""]}`;
+  const greeting = input.contactFirstName ? `Hi ${input.contactFirstName},` : `Hi ${input.companyName} team,`;
+  return `Write a short, personal first-touch email from Code Nativex, following the approved template below. Return strict JSON only.
+
+APPROVED TEMPLATE
+Subject: Quick note on ${input.companyName}'s website
+${greeting}
+
+I came across ${input.companyName} while looking at businesses${input.city ? ` in ${input.city}` : ""} and took a quick look at your website.
+
+A couple of things stood out: [one or two verified findings]. [A careful sentence about the likely impact on visitors or enquiries.]
+
+I can share a short PDF report with practical fixes, or record a 2-minute video walking you through them. Would either be useful? No cost or obligation.
+
+ALLOWED EVIDENCE
+${JSON.stringify(input.findings.map(({ code, title, evidence, impact }) => ({ code, title, evidence, impact })), null, 2)}
+
+RULES
+- Start exactly with: ${greeting}
+- Follow the template's friendly, plain-English tone and short paragraphs. Personalize naturally; do not write a report, scorecard or technical list.
+- Mention 1 or 2 supplied findings and return their codes. Use one finding if only one is verified.
+- Use the real company name. Mention industry/city only if provided: ${input.industry || "not provided"}, ${input.city || "not provided"}.
+- Treat website data as background only: ${input.website}. Do not print URLs or domain names in the generated body.
+- Offer a short PDF report OR a 2-minute video. Offer to record/send it; never claim a video already exists.
+- Do not attach, link to, or claim to have attached a report. Do not include a booking link or ask for a call in this first email.
+- End with one low-pressure permission question and no cost or obligation.
+- Body: 60 to 120 words, before the signature. Subject: Quick note on ${input.companyName}'s website.
+- Mention at most one service: ${input.service || "website improvements"}; keep the main focus on helping the prospect.
+- Do not add any sign-off, signature, sender name or opt-out line; the system adds those once.
+- No invented load times, lost enquiries, percentages, case studies, buying intent or guarantees. Describe impact as a possibility.
+- Replace every template placeholder with verified information. No square-bracket placeholders in the result.
+
+RETURN EXACTLY
+{"subject":"","body":"","finding_codes":[""]}`;
 }

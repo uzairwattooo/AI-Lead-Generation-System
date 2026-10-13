@@ -35,7 +35,8 @@ export function validateEvidenceDraft(input: DraftValidationInput): string[] {
   if (/best regards|kind regards|warm regards|\nregards,?|\nbest,?|sincerely|code\s*nativex team/i.test(input.body)) {
     errors.push("Draft must not include a signature or duplicate closing.");
   }
-  if (/attach(?:ed|ment)|https?:\/\/|calendly|book a|\d+[- ]minute call|\bvideo\b/i.test(input.body)) errors.push("First-touch emails must offer the breakdown without attachments, booking links or video promises.");
+  if (/attach(?:ed|ment)|https?:\/\/|calendly|book a|\d+[- ]minute call/i.test(input.body)) errors.push("First-touch emails may offer a PDF report or 2-minute video, but must not attach files or include booking links.");
+  if (/\b(?:i|we)\s+(?:have\s+)?(?:recorded|made|created|prepared)\b[^.]*\bvideo\b/i.test(input.body)) errors.push("Offer to record a video; do not claim a recording already exists.");
   if (/\[[^\]]+\]|\{\{/.test(input.body + input.subject)) errors.push("Draft contains unresolved placeholders.");
   if (/\d+(?:\.\d+)?\s*%|guarantee|we recently worked|our client/i.test(input.body)) errors.push("Draft contains unapproved results or proof.");
   const evidenceText = input.verifiedFindings.filter((finding) => used.has(finding.code)).map((finding) => finding.evidence).join(" ").toLowerCase();

@@ -6,9 +6,9 @@ export async function POST(request: Request) {
  const auth = requireN8nSecret(request); if (auth) return auth;
  try {
   const admin = createSupabaseAdminClient();
-  const {data: leads,error} = await admin.from("lead_pipeline").select("id,status,reply_message_id").in("status",["report_requested","meeting_requested"]).eq("next_workflow","05 - Meeting Booking & Sales Handoff").eq("do_not_contact",false).order("updated_at").limit(50);
+  const {data: leads,error} = await admin.from("lead_pipeline").select("id,status,reply_message_id").in("status",["report_requested","meeting_requested","video_requested","report_and_video_requested"]).eq("next_workflow","05 - Meeting Booking & Sales Handoff").eq("do_not_contact",false).eq("approval_status","approved").order("updated_at").limit(50);
   if(error) throw new Error(error.message);
-  const rows = (leads ?? []).filter(l=>l.reply_message_id).map(l=>({lead_id:l.id,reply_message_id:l.reply_message_id,action:l.status==="report_requested"?"report":"booking"}));
+  const rows = (leads ?? []).filter(l=>l.reply_message_id).map(l=>({lead_id:l.id,reply_message_id:l.reply_message_id,action:({report_requested:"report",video_requested:"video",report_and_video_requested:"report_and_video",meeting_requested:"booking"} as Record<string,string>)[l.status]}));
   if(rows.length) {
    const {error:e} = await admin.from("codenativex_reply_actions").upsert(rows,{onConflict:"lead_id,reply_message_id",ignoreDuplicates:true});
    if(e) throw new Error(e.message);
