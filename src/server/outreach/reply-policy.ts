@@ -1,6 +1,5 @@
 export type ReplyAction = "report" | "video" | "report_and_video" | "booking" | "none";
-export function requestedReplyAction(text: string, intent: string, reportSent?: boolean): ReplyAction {
-  void reportSent;
+export function requestedReplyAction(text: string, intent: string): ReplyAction {
   const latest = text.toLowerCase();
   if (["unsubscribe", "not_interested", "wrong_person", "delivery_failed", "out_of_office"].includes(intent)) return "none";
   if (/unsubscribe|remove me|stop (?:emailing|contacting)|do not contact|not interested|no thanks/.test(latest)) return "none";
