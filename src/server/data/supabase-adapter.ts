@@ -57,7 +57,7 @@ type Row = Record<string, unknown>;
 interface FilterBuilder extends PromiseLike<{ data: Row[] | null; error: { message: string } | null }> {
   eq(column: string, value: unknown): FilterBuilder;
   in(column: string, values: readonly unknown[]): FilterBuilder;
-  order(column: string, options?: { ascending?: boolean }): FilterBuilder;
+  order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FilterBuilder;
   limit(count: number): FilterBuilder;
   select(columns: string): FilterBuilder;
 }
@@ -439,6 +439,11 @@ function mapLead(row: Row): Lead {
     verificationHistory: (row["verification_history"] as Lead["verificationHistory"]) ?? [],
     notes: (row["notes"] as Lead["notes"]) ?? [],
     discoveredAt: createdAt,
+    lastActionAt: nullableStr(row, "dashboard_action_at") ?? nullableStr(row, "reviewed_at"),
+    lastAction: nullableStr(row, "dashboard_action") ?? (nullableStr(row, "reviewed_at") ? str(row, "review_status") : null),
+    processingStatus: nullableStr(row, "status"),
+    rawOutreachStatus: nullableStr(row, "outreach_status"),
+    dashboardDeletedAt: nullableStr(row, "dashboard_deleted_at"),
   };
 }
 
@@ -487,6 +492,9 @@ function mapCandidateLead(candidate: Row, pipeline?: Row): Lead {
       pipeline && typeof pipeline["qualification_score"] === "number"
         ? num(pipeline, "qualification_score")
         : discoveryQuality(candidate) * 10,
+    dashboard_action_at: Date.parse(str(candidate, "dashboard_action_at") || str(candidate, "reviewed_at") || "") > Date.parse((pipeline ? str(pipeline, "dashboard_action_at") : "") || "1970-01-01") ? (str(candidate, "dashboard_action_at") || str(candidate, "reviewed_at")) : (pipeline ? str(pipeline, "dashboard_action_at") : null),
+    dashboard_action: Date.parse(str(candidate, "dashboard_action_at") || str(candidate, "reviewed_at") || "") > Date.parse((pipeline ? str(pipeline, "dashboard_action_at") : "") || "1970-01-01") ? (str(candidate, "dashboard_action") || str(candidate, "review_status")) : (pipeline ? str(pipeline, "dashboard_action") : null),
+    dashboard_deleted_at: nullableStr(candidate, "dashboard_deleted_at") ?? (pipeline ? nullableStr(pipeline, "dashboard_deleted_at") : null),
     created_at: str(candidate, "created_at") || (pipeline ? str(pipeline, "created_at") : ""),
     is_recommended: bool(candidate, "is_recommended"),
     recommendation_rank: candidate["recommendation_rank"],
@@ -904,7 +912,7 @@ export class SupabaseAdapter implements LeadRepository {
 
   async listLeads(query: LeadQuery): Promise<Paginated<Lead> & { facets: LeadFacets }> {
     const candidateRows = await this.rows(TABLES.candidates, (candidateQuery) => {
-      let scoped = candidateQuery.limit(5000).order("created_at", { ascending: false });
+      let scoped = candidateQuery.limit(5000).order("dashboard_action_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
       if (query.requestId) scoped = scoped.eq("job_id", query.requestId);
       return scoped;
     });
@@ -917,7 +925,7 @@ export class SupabaseAdapter implements LeadRepository {
     }
     if (!query.requestId) {
       const legacyRows = await this.rows(TABLES.leads, (leadQuery) =>
-        leadQuery.limit(5000).order("created_at", { ascending: false }),
+        leadQuery.limit(5000).order("dashboard_action_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
       );
       const knownIds = new Set(pipelineRows.map((row) => str(row, "id")));
       pipelineRows.push(...legacyRows.filter((row) => !knownIds.has(str(row, "id"))));
@@ -942,6 +950,8 @@ export class SupabaseAdapter implements LeadRepository {
         : []),
     ];
 
+    allLeads = allLeads.filter((lead) => !lead.dashboardDeletedAt);
+
     // The migration stores the top two ranks. This fallback keeps older rows
     // useful before the migration has ranked them; no lead is removed.
     const groups = new Map<string, Lead[]>();
@@ -960,6 +970,7 @@ export class SupabaseAdapter implements LeadRepository {
     const search = query.search?.trim().toLowerCase();
     const contactFilters = new Set(query.contact ?? []);
     const filtered = allLeads.filter((lead) => {
+      if (lead.dashboardDeletedAt) return false;
       if (query.categories?.length && !query.categories.includes(lead.category)) return false;
       if (query.verification?.length && !query.verification.includes(lead.verificationStatus)) return false;
       if (query.outreach?.length && !query.outreach.includes(lead.outreachStatus)) return false;
@@ -992,6 +1003,8 @@ export class SupabaseAdapter implements LeadRepository {
     const direction = query.sortDir === "asc" ? 1 : -1;
     filtered.sort((a, b) => {
       switch (query.sortBy) {
+        case "lastActionAt":
+          return (Date.parse(a.lastActionAt || a.discoveredAt) - Date.parse(b.lastActionAt || b.discoveredAt)) * direction || a.id.localeCompare(b.id);
         case "companyName":
           return a.companyName.localeCompare(b.companyName) * direction;
         case "category":
@@ -1077,6 +1090,7 @@ export class SupabaseAdapter implements LeadRepository {
     const now = new Date().toISOString();
     const pipelineRows = await this.rows(TABLES.leads, (query) => query.in("id", ids));
     const candidateRows = await this.rows(TABLES.candidates, (query) => query.in("id", ids));
+    if ([...pipelineRows, ...candidateRows].some((row) => nullableStr(row, "dashboard_deleted_at"))) throw new Error("Removed leads cannot be approved or rejected.");
     const pipelineIds = pipelineRows.map((row) => str(row, "id"));
     const candidateIds = candidateRows.map((row) => str(row, "id"));
     const candidateLeadKeys = candidateRows.map((row) => str(row, "lead_key")).filter(Boolean);
@@ -1084,6 +1098,7 @@ export class SupabaseAdapter implements LeadRepository {
     if (pipelineIds.length) {
       const { error } = await this.client.from(TABLES.leads).update({
         approval_status: approval,
+        dashboard_action_at: now, dashboard_action: approval,
         ...(approval === "rejected" ? { next_follow_up_at: null, next_workflow: null, outreach_approved_at: null, email_preview_status: "rejected", outreach_status: "blocked" } : {}),
         rejection_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
         approved_by: this.userEmail,
@@ -1094,6 +1109,7 @@ export class SupabaseAdapter implements LeadRepository {
     if (candidateLeadKeys.length) {
       const { error } = await this.client.from(TABLES.leads).update({
         approval_status: approval,
+        dashboard_action_at: now, dashboard_action: approval,
         ...(approval === "rejected" ? { next_follow_up_at: null, next_workflow: null, outreach_approved_at: null, email_preview_status: "rejected", outreach_status: "blocked" } : {}),
         rejection_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
         approved_by: this.userEmail,
@@ -1107,6 +1123,7 @@ export class SupabaseAdapter implements LeadRepository {
         review_reason: approval === "rejected" ? (rejectionReason ?? null) : null,
         reviewed_by: this.userEmail,
         reviewed_at: now,
+        dashboard_action_at: now, dashboard_action: approval,
         updated_at: now,
       }).in("id", candidateIds);
       if (error) throw new Error(`Could not update discovery review: ${error.message}. Run the human-review migration first.`);
@@ -1114,6 +1131,31 @@ export class SupabaseAdapter implements LeadRepository {
 
     const updated = await Promise.all(ids.map((leadId) => this.getLead(leadId)));
     return updated.filter((lead): lead is Lead => Boolean(lead));
+  }
+
+  async deleteLeads(ids: string[]): Promise<number> {
+    const pipelineRows = await this.rows(TABLES.leads, (query) => query.in("id", ids));
+    const candidateRows = await this.rows(TABLES.candidates, (query) => query.in("id", ids));
+    const keys = [...new Set([...pipelineRows, ...candidateRows].map((row) => str(row, "lead_key")).filter(Boolean))];
+    const now = new Date().toISOString();
+    const patch = { dashboard_deleted_at: now, updated_at: now };
+    // Keep audit/reply history, but revoke approval and stop future outreach.
+    const pipelinePatch = { ...patch, approval_status: "rejected", do_not_contact: true, next_workflow: null, next_follow_up_at: null, outreach_approved_at: null, email_preview_status: "rejected", outreach_status: "blocked" };
+    if (pipelineRows.length) {
+      const { error } = await this.client.from(TABLES.leads).update(pipelinePatch).in("id", pipelineRows.map((row) => str(row, "id")));
+      if (error) throw new Error(error.message);
+    }
+    if (keys.length) {
+      const { error } = await this.client.from(TABLES.leads).update(pipelinePatch).in("lead_key", keys);
+      if (error) throw new Error(error.message);
+      const { error: candidateError } = await this.client.from(TABLES.candidates).update({ ...patch, review_status: "rejected" }).in("lead_key", keys);
+      if (candidateError) throw new Error(candidateError.message);
+    }
+    if (candidateRows.length) {
+      const { error } = await this.client.from(TABLES.candidates).update({ ...patch, review_status: "rejected" }).in("id", candidateRows.map((row) => str(row, "id")));
+      if (error) throw new Error(error.message);
+    }
+    return new Set([...pipelineRows, ...candidateRows].map((row) => str(row, "id"))).size;
   }
 
   async sendToOutreach(
@@ -1128,6 +1170,7 @@ export class SupabaseAdapter implements LeadRepository {
     const promotedIds: string[] = [];
 
     for (const candidate of candidateRows) {
+      if (nullableStr(candidate, "dashboard_deleted_at")) continue;
       if (str(candidate, "review_status") !== "approved" || !nullableStr(candidate, "email")) continue;
       const { data, error } = await this.client.rpc("codenativex_promote_discovery_candidate", {
         p_candidate_id: str(candidate, "id"),
@@ -1147,14 +1190,17 @@ export class SupabaseAdapter implements LeadRepository {
       .filter((row) => str(row, "approval_status") === "approved")
       .filter((row) => Boolean(nullableStr(row, "email")))
       .filter((row) => !bool(row, "do_not_contact"))
+      .filter((row) => !nullableStr(row, "dashboard_deleted_at"))
       .filter((row) => num(row, "duplicate_count") === 0)
       .filter((row) => !str(row, "gmail_message_id"))
       .map((row) => str(row, "id")))];
     if (eligibleIds.length === 0) return [];
+    const preparedAt = new Date().toISOString();
     const { data, error } = await this.client
       .from(TABLES.leads)
       .update({
         audit_status: "audit_pending",
+        dashboard_action_at: preparedAt, dashboard_action: "outreach_prepared",
         outreach_status: "not_started",
         status: "audit_pending",
         next_action: "run_verified_website_audit",

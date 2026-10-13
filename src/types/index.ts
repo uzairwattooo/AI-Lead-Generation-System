@@ -303,6 +303,11 @@ export interface Lead {
   verificationHistory: VerificationEvent[];
   notes: LeadNote[];
   discoveredAt: string;
+  lastActionAt?: string | null;
+  lastAction?: string | null;
+  processingStatus?: string | null;
+  rawOutreachStatus?: string | null;
+  dashboardDeletedAt?: string | null;
 }
 
 export interface OutreachPreparationOptions {

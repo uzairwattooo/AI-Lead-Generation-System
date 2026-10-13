@@ -86,6 +86,7 @@ export function useLeads(filters: LeadListFilters) {
     queryKey: queryKeys.leads(filters),
     queryFn: ({ signal }) => leadService.listLeads(filters, signal),
     placeholderData: (previous) => previous,
+    refetchInterval: 5000,
   });
 }
 
@@ -94,6 +95,7 @@ export function useLead(id: string | null) {
     queryKey: queryKeys.lead(id ?? ""),
     queryFn: ({ signal }) => leadService.getLead(id as string, signal),
     enabled: Boolean(id),
+    refetchInterval: 5000,
   });
 }
 
@@ -131,6 +133,15 @@ function useLeadInvalidation() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
     void queryClient.invalidateQueries({ queryKey: queryKeys.outreach });
   };
+}
+
+export function useDeleteLeads() {
+  const invalidate = useLeadInvalidation();
+  return useMutation({
+    mutationFn: (ids: string[]) => leadService.deleteLeads(ids),
+    onSuccess: () => { toast.success("Leads removed; outreach stopped"); invalidate(); },
+    onError: (error) => toast.error("Could not remove leads", { description: errorMessage(error) }),
+  });
 }
 
 export function useApproveLeads() {
@@ -221,6 +232,7 @@ export function useApproveOutreachMessage() {
       leadService.approveOutreachMessage(input.outreachId, input.messageId),
     onSuccess: () => {
       toast.success("Email approved and queued for sending");
+      void queryClient.invalidateQueries({ queryKey: ["leads"] });
       void queryClient.invalidateQueries({ queryKey: queryKeys.outreach });
       void queryClient.invalidateQueries({ queryKey: queryKeys.overview });
     },

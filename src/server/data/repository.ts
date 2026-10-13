@@ -60,6 +60,7 @@ export interface LeadRepository {
     approval: "approved" | "rejected",
     rejectionReason?: string,
   ): Promise<Lead[]>;
+  deleteLeads(ids: string[]): Promise<number>;
   sendToOutreach(ids: string[], options?: import("@/types").OutreachPreparationOptions): Promise<OutreachRecord[]>;
   addNote(leadId: string, body: string, author: string): Promise<LeadNote>;
 

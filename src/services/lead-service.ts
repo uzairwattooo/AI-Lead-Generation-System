@@ -92,6 +92,8 @@ export const leadService = {
 
   getLead: (id: string, signal?: AbortSignal) => apiGet<Lead>(`/api/leads/${id}`, signal),
 
+  deleteLeads: (leadIds: string[]) => apiSend<{ deleted: number }>("/api/leads/delete", "POST", { leadIds }),
+
   approveLeads: (leadIds: string[]) =>
     apiSend<{ updated: number; leads: Lead[] }>("/api/leads/approve", "POST", { leadIds }),
 

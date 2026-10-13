@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       recommendedOnly: params.get("recommendedOnly") === "true",
       minScore: numberParam(params, "minScore"),
       maxScore: numberParam(params, "maxScore"),
-      sortBy: params.get("sortBy") ?? "recommended",
+      sortBy: params.get("sortBy") ?? "lastActionAt",
       sortDir: params.get("sortDir") === "asc" ? "asc" : "desc",
     };
 

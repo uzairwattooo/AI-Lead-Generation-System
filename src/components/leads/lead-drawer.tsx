@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { LeadProgressBadge } from "@/components/leads/lead-progress-badge";
 import { ApprovalBadge, OutreachBadge, VerificationBadge } from "@/components/status-badges";
 import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { LeadVideoEditor } from "@/components/outreach/lead-video-editor";
@@ -59,7 +60,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
           {lead.isRecommended ? <Badge tone="success">Recommended</Badge> : null}
           <VerificationBadge status={lead.verificationStatus} />
           <ApprovalBadge status={lead.approvalStatus} />
-          <OutreachBadge status={lead.outreachStatus} />
+          <LeadProgressBadge lead={lead} />
           {lead.isPossibleDuplicate ? <Badge tone="warning">Possible duplicate</Badge> : null}
         </div>
         {lead.approvalStatus === "rejected" && lead.rejectionReason ? (

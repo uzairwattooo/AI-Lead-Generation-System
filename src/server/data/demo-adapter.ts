@@ -160,6 +160,8 @@ function compareLeads(a: Lead, b: Lead, sortBy: string, dir: "asc" | "desc"): nu
       return a.category.localeCompare(b.category) * factor;
     case "location":
       return `${a.city ?? ""}${a.country}`.localeCompare(`${b.city ?? ""}${b.country}`) * factor;
+    case "lastActionAt":
+      return (Date.parse(a.lastActionAt || a.discoveredAt) - Date.parse(b.lastActionAt || b.discoveredAt)) * factor;
     case "discoveredAt":
       return (Date.parse(a.discoveredAt) - Date.parse(b.discoveredAt)) * factor;
     case "recommended":
@@ -410,6 +412,8 @@ export class DemoAdapter implements LeadRepository {
     for (const lead of store.leads) {
       if (!ids.includes(lead.id)) continue;
       lead.approvalStatus = approval;
+      lead.lastActionAt = new Date().toISOString();
+      lead.lastAction = approval;
       lead.rejectionReason = approval === "rejected" ? (rejectionReason ?? null) : null;
       updated.push(lead);
     }
@@ -424,6 +428,14 @@ export class DemoAdapter implements LeadRepository {
       });
     }
     return updated;
+  }
+
+  async deleteLeads(ids: string[]): Promise<number> {
+    const store = getStore();
+    const removed = store.leads.filter((lead) => ids.includes(lead.id)).length;
+    store.leads = store.leads.filter((lead) => !ids.includes(lead.id));
+    store.outreach = store.outreach.filter((record) => !ids.includes(record.leadId));
+    return removed;
   }
 
   async sendToOutreach(ids: string[]): Promise<OutreachRecord[]> {
@@ -466,6 +478,8 @@ export class DemoAdapter implements LeadRepository {
         ],
       };
       lead.outreachStatus = "queued";
+      lead.lastActionAt = new Date().toISOString();
+      lead.lastAction = "outreach_prepared";
       store.outreach.unshift(record);
       created.push(record);
     }

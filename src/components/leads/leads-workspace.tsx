@@ -16,14 +16,15 @@ import {
   Send,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   X,
 } from "lucide-react";
 
+import { LeadProgressBadge } from "@/components/leads/lead-progress-badge";
 import { LeadDrawer } from "@/components/leads/lead-drawer";
 import { RejectDialog } from "@/components/leads/reject-dialog";
 import {
   ApprovalBadge,
-  OutreachBadge,
   VerificationBadge,
 } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +70,7 @@ import {
 } from "@/components/ui/table";
 import {
   useApproveLeads,
+  useDeleteLeads,
   useLeads,
   useRejectLeads,
   useSendToOutreach,
@@ -100,7 +102,9 @@ const COLUMNS = [
   { key: "audit", label: "Website audit" },
   { key: "verification", label: "Verification" },
   { key: "approval", label: "Approval" },
-  { key: "outreach", label: "Outreach" },
+  { key: "outreach", label: "Outreach progress" },
+  { key: "lastActionAt", label: "Last action", sortable: true },
+  { key: "actions", label: "Actions" },
   { key: "source", label: "Source" },
   { key: "discoveredAt", label: "Discovered", sortable: true },
 ] as const;
@@ -169,12 +173,13 @@ export function LeadsWorkspace({
   const [outreach, setOutreach] = React.useState<string[]>([]);
   const [contact, setContact] = React.useState<string[]>([]);
   const [recommendedOnly, setRecommendedOnly] = React.useState(false);
-  const [sortBy, setSortBy] = React.useState("recommended");
+  const [sortBy, setSortBy] = React.useState("lastActionAt");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [hiddenColumns, setHiddenColumns] = React.useState<ColumnKey[]>(DEFAULT_HIDDEN);
   const [selected, setSelected] = React.useState<string[]>([]);
   const [openLeadId, setOpenLeadId] = React.useState<string | null>(null);
   const [rejectTargets, setRejectTargets] = React.useState<string[] | null>(null);
+  const [deleteTargets, setDeleteTargets] = React.useState<string[]>([]);
   const [outreachConfirm, setOutreachConfirm] = React.useState(false);
 
   React.useEffect(() => {
@@ -222,6 +227,7 @@ export function LeadsWorkspace({
   const approveMutation = useApproveLeads();
   const rejectMutation = useRejectLeads();
   const outreachMutation = useSendToOutreach();
+  const deleteMutation = useDeleteLeads();
 
   const leads = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -305,6 +311,8 @@ export function LeadsWorkspace({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <Button variant={sortBy === "lastActionAt" && sortDir === "desc" ? "primary" : "secondary"} onClick={() => { setSortBy("lastActionAt"); setSortDir("desc"); setPage(1); }}>Latest activity first</Button>
+              <span className="text-xs text-[var(--app-text-muted)]">Status refreshes every 5 seconds</span>
               <Button
                 type="button"
                 variant={recommendedOnly ? "primary" : "secondary"}
@@ -491,7 +499,7 @@ export function LeadsWorkspace({
                 loading={approveMutation.isPending}
                 disabled={lockedApproval?.[0] === "approved"}
                 onClick={() =>
-                  approveMutation.mutate(selected, { onSuccess: () => { setSelected([]); setPage(1); } })
+                  approveMutation.mutate(selected, { onSuccess: () => { setSelected([]); setPage(1); setSortBy("lastActionAt"); setSortDir("desc"); } })
                 }
               >
                 <ThumbsUp aria-hidden />
@@ -509,6 +517,7 @@ export function LeadsWorkspace({
                 <Send aria-hidden />
                 Mark ready for outreach
               </Button>
+              <Button size="sm" variant="secondary" onClick={() => setDeleteTargets(selected)}><Trash2 aria-hidden />Delete selected</Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
                 Clear
               </Button>
@@ -527,7 +536,7 @@ export function LeadsWorkspace({
         ) : leads.length === 0 ? (
           <EmptyState title={emptyTitle} description={emptyDescription} />
         ) : (
-          <TableWrapper className={isFetching ? "opacity-70 transition-opacity" : undefined}>
+          <TableWrapper aria-busy={isFetching}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -669,7 +678,11 @@ export function LeadsWorkspace({
                           ) : column.key === "approval" ? (
                             <ApprovalBadge status={lead.approvalStatus} />
                           ) : column.key === "outreach" ? (
-                            <OutreachBadge status={lead.outreachStatus} />
+                            <LeadProgressBadge lead={lead} />
+                          ) : column.key === "lastActionAt" ? (
+                            <div className="text-xs"><p className="font-medium">{lead.lastAction === "outreach_prepared" ? "Marked ready for outreach" : lead.lastAction === "approved" ? "Approved" : lead.lastAction === "rejected" ? "Rejected" : "Discovered"}</p><p className="mt-1 text-[var(--app-text-muted)]">{formatDate(lead.lastActionAt || lead.discoveredAt)}</p></div>
+                          ) : column.key === "actions" ? (
+                            <Button size="sm" variant="ghost" aria-label={`Delete ${lead.companyName}`} onClick={() => setDeleteTargets([lead.id])}><Trash2 className="size-4" aria-hidden /></Button>
                           ) : column.key === "source" ? (
                             lead.sourceLinks[0] ? (
                               <a
@@ -753,7 +766,7 @@ export function LeadsWorkspace({
       <LeadDrawer
         leadId={openLeadId}
         onOpenChange={(open) => !open && setOpenLeadId(null)}
-        onApprove={(leadId) => approveMutation.mutate([leadId], { onSuccess: () => { setOpenLeadId(null); setPage(1); } })}
+        onApprove={(leadId) => approveMutation.mutate([leadId], { onSuccess: () => { setOpenLeadId(null); setPage(1); setSortBy("lastActionAt"); setSortDir("desc"); } })}
         onReject={(leadId) => setRejectTargets([leadId])}
       />
 
@@ -771,6 +784,7 @@ export function LeadsWorkspace({
                 setRejectTargets(null);
                 setPage(1);
                 setOpenLeadId(null);
+                setSortBy("lastActionAt"); setSortDir("desc");
                 setSelected([]);
               },
             },
@@ -778,6 +792,12 @@ export function LeadsWorkspace({
         }}
       />
 
+      <Dialog open={deleteTargets.length > 0} onOpenChange={(open) => { if (!open && !deleteMutation.isPending) setDeleteTargets([]); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Remove {deleteTargets.length} lead{deleteTargets.length === 1 ? "" : "s"}?</DialogTitle><DialogDescription>These leads will disappear from the dashboard. Approval is revoked and future outreach is stopped. Existing audit and email history is retained.</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="secondary" disabled={deleteMutation.isPending} onClick={() => setDeleteTargets([])}>Cancel</Button><Button loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate(deleteTargets, { onSuccess: () => { setDeleteTargets([]); setSelected([]); setOpenLeadId(null); setPage(1); setSortBy("lastActionAt"); setSortDir("desc"); } })}>Delete leads</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={outreachConfirm} onOpenChange={setOutreachConfirm}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -821,7 +841,8 @@ export function LeadsWorkspace({
                   {
                     onSuccess: () => {
                       setOutreachConfirm(false);
-                      setSelected([]);
+                      setSortBy("lastActionAt"); setSortDir("desc");
+                      setSelected([]); setPage(1);
                     },
                   },
                 )
