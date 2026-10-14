@@ -406,6 +406,10 @@ function mapLead(row: Row): Lead {
     emailPreviewStatus: nullableStr(row, "email_preview_status"),
     outreachApprovedAt: nullableStr(row, "outreach_approved_at"),
     outreachVideoUrl: nullableStr(row, "outreach_video_url"),
+    visualConceptReady: Boolean(nullableStr(row,"visual_concept_path")),
+    outreachIncludeConcept: bool(row,"outreach_include_concept"),
+    adminNotificationStatus: nullableStr(row,"admin_notification_status"),
+    adminNotificationError: nullableStr(row,"admin_notification_error"),
     email: nullableStr(row, "email"),
     phone: nullableStr(row, "phone"),
     decisionMaker: contactName || contactRole
@@ -591,6 +595,9 @@ function mapOutreach(row: Row): OutreachRecord {
     auditScore: typeof row["audit_score"] === "number" ? num(row, "audit_score") : null,
     auditReportAvailable: Boolean(nullableStr(row, "audit_report_url")),
     auditReportFilename: nullableStr(row, "audit_report_filename"),
+    outreachIncludeConcept: bool(row, "outreach_include_concept"),
+    visualConceptReady: Boolean(nullableStr(row, "visual_concept_path")),
+    visualConceptJobId: nullableStr(row, "visual_concept_job_id"),
     auditBlockReason: nullableStr(row, "audit_error_message") ?? nullableStr(row, "last_outreach_error"),
     gmailMessageId: nullableStr(row, "gmail_message_id"),
     gmailThreadId: nullableStr(row, "gmail_thread_id"),
@@ -1254,7 +1261,7 @@ export class SupabaseAdapter implements LeadRepository {
     if (!record.messages.some((message) => message.id === messageId)) {
       throw new BackendNotConnectedError(`outreach/${outreachId}/messages/${messageId}`);
     }
-    if (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url")) {
+    if (!(bool(sourceRow,"outreach_include_concept") && str(sourceRow,"visual_concept_path")) && (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url"))) {
       throw new Error("This email cannot be approved until a verified audit and PDF report are complete.");
     }
     if (bool(sourceRow, "do_not_contact") || num(sourceRow, "duplicate_count") > 0 || str(sourceRow, "gmail_message_id")) {

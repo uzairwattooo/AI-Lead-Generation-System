@@ -282,6 +282,10 @@ export interface Lead {
   emailPreviewStatus: string | null;
   outreachApprovedAt: string | null;
   outreachVideoUrl?: string | null;
+  visualConceptReady?: boolean;
+  outreachIncludeConcept?: boolean;
+  adminNotificationStatus?: string | null;
+  adminNotificationError?: string | null;
   email: string | null;
   phone: string | null;
   decisionMaker: DecisionMaker | null;
@@ -345,6 +349,9 @@ export interface OutreachRecord {
   auditScore: number | null;
   auditReportAvailable: boolean;
   auditReportFilename: string | null;
+  outreachIncludeConcept?: boolean;
+  visualConceptReady?: boolean;
+  visualConceptJobId?: string | null;
   auditBlockReason: string | null;
   gmailMessageId: string | null;
   gmailThreadId: string | null;

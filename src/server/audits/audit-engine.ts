@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { load } from "cheerio";
+import { fetchAuditHomepage } from "./homepage-fetch";
+import { assessWebsiteIdentity, nonBusinessWebsite } from "./website-identity";
 
 import type { AuditScores, WebsiteAudit } from "@/types";
 import { serverEnv } from "@/server/env";
@@ -35,7 +37,8 @@ function booleanValue(value: unknown): boolean {
 }
 
 function isPrivateIp(address: string): boolean {
-  if (address === "::1" || address.startsWith("fe80:") || address.startsWith("fc") || address.startsWith("fd")) return true;
+  if (address.startsWith("::ffff:")) return isPrivateIp(address.slice(7));
+  if (address === "::" || address === "::1" || address.startsWith("fe80:") || address.startsWith("fc") || address.startsWith("fd")) return true;
   if (!address.includes(".")) return false;
   const parts = address.split(".").map(Number);
   const first = parts[0] ?? -1;
@@ -50,7 +53,7 @@ function isPrivateIp(address: string): boolean {
   );
 }
 
-async function assertPublicHttpUrl(value: string): Promise<URL> {
+export async function assertPublicHttpUrl(value: string): Promise<URL> {
   let parsed: URL;
   try {
     parsed = new URL(value);
@@ -70,31 +73,8 @@ async function assertPublicHttpUrl(value: string): Promise<URL> {
   return parsed;
 }
 
-async function fetchHtml(initialUrl: string): Promise<{ response: Response; body: string; finalUrl: string; bytes: number }> {
-  let current = (await assertPublicHttpUrl(initialUrl)).toString();
-  for (let redirect = 0; redirect < 6; redirect += 1) {
-    const response = await fetch(current, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        accept: "text/html,application/xhtml+xml",
-        "user-agent": "CodeNativeX-AuditBot/1.0 (+https://codenativex.com)",
-      },
-      cache: "no-store",
-    });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) throw new Error("REDIRECT_WITHOUT_LOCATION");
-      current = (await assertPublicHttpUrl(new URL(location, current).toString())).toString();
-      continue;
-    }
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.toLowerCase().includes("text/html")) throw new Error("NON_HTML_HOMEPAGE");
-    const buffer = new Uint8Array(await response.arrayBuffer());
-    if (buffer.byteLength > 5_000_000) throw new Error("HOMEPAGE_TOO_LARGE_TO_AUDIT");
-    return { response, body: new TextDecoder().decode(buffer), finalUrl: current, bytes: buffer.byteLength };
-  }
-  throw new Error("TOO_MANY_REDIRECTS");
+async function fetchHtml(initialUrl:string) {
+  return fetchAuditHomepage(initialUrl,assertPublicHttpUrl);
 }
 
 function absoluteHttpUrl(value: string | undefined, base: string): string | null {
@@ -128,9 +108,9 @@ async function inspectResources(body: string, finalUrl: string): Promise<Pick<Ho
           headers: { "user-agent": "CodeNativeX-AuditBot/1.0 (+https://codenativex.com)" },
           cache: "no-store",
         });
-        return response.status >= 400 ? { url, status: response.status, kind } : null;
+        return [404,410].includes(response.status) ? { url, status: response.status, kind } : null;
       } catch {
-        return { url, status: null, kind };
+        return null;
       }
     }),
   );
@@ -151,7 +131,7 @@ function detectTechnology(body: string): string[] {
   return checks.filter(([pattern]) => pattern.test(body)).map(([, name]) => name);
 }
 
-async function auditHomepage(url: string): Promise<HomepageEvidence> {
+export async function auditHomepage(url: string): Promise<HomepageEvidence> {
   const empty: HomepageEvidence = {
     fetched: false, requestedUrl: url, finalUrl: "", statusCode: null, hasHttps: null,
     title: null, metaDescription: null, h1: [], hasViewportMeta: null, canonicalUrl: null,
@@ -159,14 +139,18 @@ async function auditHomepage(url: string): Promise<HomepageEvidence> {
     technologyHints: [], brokenLinks: [], checkedResourceCount: 0, error: null,
   };
   try {
-    const { response, body, finalUrl, bytes } = await fetchHtml(url);
+    const { response, body, finalUrl, bytes, method, directError } = await fetchHtml(url);
     if (!response.ok) return { ...empty, finalUrl, statusCode: response.status, hasHttps: finalUrl.startsWith("https://"), error: `HTTP_${response.status}` };
     const $ = load(body);
+    $("script,style,noscript").remove();
     const copyrightYears = [...body.matchAll(/(?:©|copyright[^0-9]{0,20})(20\d{2})/gi)].map((match) => Number(match[1]));
     const contactPattern = /contact|book|schedule|appointment|quote|consult/i;
     const resources = await inspectResources(body, finalUrl);
     return {
       fetched: true,
+      fetchMethod: method,
+      directFetchError: directError || null,
+      identityText: $("body").text().replace(/\s+/g," ").slice(0,1_000_000),
       requestedUrl: url,
       finalUrl,
       statusCode: response.status,
@@ -286,33 +270,55 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
   const auditId = randomUUID();
   const startedAt = new Date().toISOString();
 
-  await admin.from("lead_pipeline").update({ audit_id: auditId, audit_status: "audit_processing", audit_error_code: null, audit_error_message: null, updated_at: startedAt }).eq("id", leadId);
+  const {error:claimError}=await admin.from("lead_pipeline").update({ audit_id: auditId, audit_status: "audit_processing", audit_error_code: null, audit_error_message: null, updated_at: startedAt }).eq("id", leadId);
 
-  const { data: candidateData } = await admin
+  const { data: candidateData, error: candidateError } = await admin
     .from("lead_discovery_candidates")
-    .select("website_verification_status, website_identity_confidence, resolved_website, website_verified_at")
+    .select("*")
     .eq("lead_key", text(lead.lead_key))
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if(claimError) throw new Error(`Could not start audit: ${claimError.message}`);
+  if(candidateError) throw new Error(`Could not load website identity: ${candidateError.message}`);
   const candidate = (candidateData ?? {}) as Row;
-  const auditedUrl = text(candidate.resolved_website) || text(lead.website);
-  const homepage = auditedUrl ? await auditHomepage(auditedUrl) : ({ fetched: false, requestedUrl: "", finalUrl: "", statusCode: null, hasHttps: null, title: null, metaDescription: null, h1: [], hasViewportMeta: null, canonicalUrl: null, hasContactCta: null, hasForm: null, htmlBytes: null, copyrightYear: null, technologyHints: [], brokenLinks: [], checkedResourceCount: 0, error: "NO_WEBSITE" } satisfies HomepageEvidence);
-  const pageSpeedUrl = homepage.fetched ? homepage.finalUrl : auditedUrl;
+  const auditedUrl = text(lead.website) || text(candidate.resolved_website);
+  const blockedWebsite = Boolean(auditedUrl && nonBusinessWebsite(auditedUrl));
+  const homepage = auditedUrl && !blockedWebsite ? await auditHomepage(auditedUrl) : ({ fetched: false, requestedUrl: "", finalUrl: "", statusCode: null, hasHttps: null, title: null, metaDescription: null, h1: [], hasViewportMeta: null, canonicalUrl: null, hasContactCta: null, hasForm: null, htmlBytes: null, copyrightYear: null, technologyHints: [], brokenLinks: [], checkedResourceCount: 0, error: blockedWebsite ? "NON_BUSINESS_WEBSITE_URL" : "NO_WEBSITE" } satisfies HomepageEvidence);
+  const pageSpeedUrl = blockedWebsite ? "" : homepage.fetched ? homepage.finalUrl : auditedUrl;
   const [mobile, desktop] = pageSpeedUrl
     ? await Promise.all([auditPageSpeed(pageSpeedUrl, "mobile"), auditPageSpeed(pageSpeedUrl, "desktop")])
     : [await auditPageSpeed("", "mobile"), await auditPageSpeed("", "desktop")];
   const findings = deriveVerifiedFindings(homepage, mobile, desktop);
   const scores = auditScores(mobile, desktop);
   const coverage = (homepage.fetched ? 45 : 0) + (mobile.fetched ? 20 : 0) + (desktop.fetched ? 20 : 0) + (homepage.checkedResourceCount > 0 ? 15 : 0);
-  const identityConfidence = numberValue(candidate.website_identity_confidence);
+  const freshIdentity = assessWebsiteIdentity({companyName:text(lead.company_name),city:text(lead.city),phone:text(lead.phone),address:text(lead.address)}, {
+    fetched:homepage.fetched,finalUrl:homepage.finalUrl||auditedUrl,title:homepage.title,headings:homepage.h1,text:homepage.identityText||""
+  });
+  const priorWebsite = text(candidate.resolved_website)||text(candidate.website);
+  const sameSavedSite = (a:string,b:string)=>{try{return new URL(a).hostname.replace(/^www\./,"")===new URL(b).hostname.replace(/^www\./,"");}catch{return false;}};
+  // Preserve verified source evidence only for this same saved website. Never promote confidence alone.
+  const priorVerified = !blockedWebsite && !nonBusinessWebsite(homepage.finalUrl||auditedUrl) && text(candidate.website_verification_status)==="verified" && sameSavedSite(priorWebsite,homepage.finalUrl||auditedUrl);
+  const identityVerified = freshIdentity.verified || priorVerified;
+  const identityConfidence = freshIdentity.verified ? freshIdentity.confidence : priorVerified ? numberValue(candidate.website_identity_confidence) : freshIdentity.confidence;
+  if(freshIdentity.verified && typeof candidate.id==="string") {
+    const {error:identityError}=await admin.from("lead_discovery_candidates").update({
+      website_verification_status:"verified",website_identity_confidence:freshIdentity.confidence,
+      website_identity_evidence:{...(candidate.website_identity_evidence as Row||{}),audit_recheck:{...freshIdentity,url:homepage.finalUrl,title:homepage.title,fetch_method:homepage.fetchMethod,checked_at:new Date().toISOString()}},
+      resolved_website:homepage.finalUrl,website:homepage.finalUrl,website_verified_at:new Date().toISOString(),
+      website_verification_error:null,website_verification_error_code:null,website_http_status:homepage.statusCode,website_accessible:true,updated_at:new Date().toISOString()
+    }).eq("id",candidate.id).eq("resolved_website",candidate.resolved_website).is("website_verification_locked_by",null);
+    if(identityError)throw new Error(`Could not save fresh website verification: ${identityError.message}`);
+  }
   const auditConfidence = Math.min(100, Math.round(identityConfidence * 0.55 + coverage * 0.45));
   const overallScore = average([scores.performanceMobile, scores.performanceDesktop, scores.seo, scores.accessibility, scores.bestPractices]);
   const safety = evaluateAuditOutreachSafety({
-    websiteIdentityVerified: text(candidate.website_verification_status) === "verified",
+    websiteIdentityVerified: identityVerified,
+    nonBusinessWebsite: blockedWebsite,
+    homepageError: homepage.error,
     websiteIdentityConfidence: identityConfidence,
     homepageFetched: homepage.fetched,
-    analyzedUrlValid: Boolean(homepage.finalUrl),
+    analyzedUrlValid: Boolean(auditedUrl) && !["INVALID_AUDIT_URL","PRIVATE_NETWORK_URL_BLOCKED"].includes(homepage.error||""),
     auditConfidence,
     confidenceThreshold: serverEnv.auditConfidenceThreshold,
     findings,
@@ -326,7 +332,8 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
   });
 
   const screenshotData = mobile.screenshotData ?? desktop.screenshotData;
-  const screenshotPath = screenshotData ? await uploadDataUrl(admin, `${leadId}/${auditId}-screenshot.jpg`, screenshotData) : null;
+  let screenshotPath:string|null=null;
+  if(screenshotData){try{screenshotPath=await uploadDataUrl(admin,`${leadId}/${auditId}-screenshot.jpg`,screenshotData);}catch{ /* A preview upload failure does not discard the audit evidence. */ }}
   const audit: WebsiteAudit = {
     id: auditId,
     leadId,
@@ -339,11 +346,11 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
     confidence: auditConfidence,
     scores,
     findings,
-    evidence: { homepage, pagespeed: { mobile: { ...mobile, screenshotData: null }, desktop: { ...desktop, screenshotData: null } } },
+    evidence: { identity:freshIdentity, homepage:{...homepage,identityText:undefined}, pagespeed: { mobile: { ...mobile, screenshotData: null }, desktop: { ...desktop, screenshotData: null } } },
     screenshotUrl: screenshotPath,
     reportFilename: null,
     reportAvailable: false,
-    generatedAt: null,
+    generatedAt: new Date().toISOString(),
     errorCode: safety.code ?? homepage.error,
     errorMessage: safety.reason ?? homepage.error,
   };
@@ -405,6 +412,7 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
     website_screenshot_url: screenshotPath,
     ...(options.replyReport ? {} : {
     email_preview_status: successful ? "pending_generation" : "blocked",
+    outreach_approved_at: null,
     status: successful ? "email_draft_pending" : "audit_needs_review",
     next_action: successful ? "generate_evidence_email" : "manual_review",
     next_workflow: successful ? "03 - Personalized Email Outreach" : null,
@@ -412,7 +420,7 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
     }),
     updated_at: new Date().toISOString(),
   };
-  const { error: updateError } = await admin.from("lead_pipeline").update(leadUpdate).eq("id", leadId);
+  const { error: updateError } = await admin.from("lead_pipeline").update(leadUpdate).eq("id", leadId).eq("audit_id",auditId);
   if (updateError) throw new Error(`Could not update audited lead: ${updateError.message}`);
 
   audit.status = successful ? "audit_completed" : audit.status;

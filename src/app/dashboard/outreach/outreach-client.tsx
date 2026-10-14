@@ -4,6 +4,7 @@ import * as React from "react";
 import { Eye, FileDown, Mail, RefreshCw, Send } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { EmailConceptAttachment } from "@/components/outreach/email-concept-attachment";
 import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { OutreachBadge } from "@/components/status-badges";
 import { Badge } from "@/components/ui/badge";
@@ -213,6 +214,9 @@ export function OutreachClient() {
                     plainText={message.body}
                     title={`${preview.companyName} email preview`}
                   />
+                  {preview.outreachIncludeConcept && message.step === "initial" && message.status !== "sent" ? (
+                    <EmailConceptAttachment leadId={preview.leadId} version={preview.visualConceptJobId} available={Boolean(preview.visualConceptReady)} />
+                  ) : null}
                   {message.sentAt ? (
                     <p className="mt-2 text-[11px] text-[var(--app-text-subtle)]">
                       Sent {formatDateTime(message.sentAt)}

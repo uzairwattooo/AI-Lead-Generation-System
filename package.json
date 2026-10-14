@@ -10,7 +10,8 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "generate:sample-audit": "node --import tsx scripts/generate-sample-audit-report.ts",
-    "generate:sample-email": "node --import tsx scripts/generate-sample-email-template.ts"
+    "generate:sample-email": "node --import tsx scripts/generate-sample-email-template.ts",
+    "test:lead-tools": "node --conditions=react-server --import tsx --test tests/lead-tools.test.ts tests/lead-tools-providers.integration.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -43,6 +44,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.63.0",
+    "server-only": "^0.0.1",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.1.11"

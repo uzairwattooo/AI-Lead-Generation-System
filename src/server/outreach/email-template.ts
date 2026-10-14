@@ -45,7 +45,7 @@ export function buildEvidenceEmailPrompt(input: {
   findings: AuditFinding[];
 }): string {
   const greeting = input.contactFirstName ? `Hi ${input.contactFirstName},` : `Hi ${input.companyName} team,`;
-  return `Write a short, personal first-touch email from Code Nativex, following the approved template below. Return strict JSON only.
+  return `Write a professional, approachable and concise first-touch email from Code Nativex, following the approved template below. Return strict JSON only.
 
 APPROVED TEMPLATE
 Subject: Quick note on ${input.companyName}'s website
@@ -62,6 +62,7 @@ ${JSON.stringify(input.findings.map(({ code, title, evidence, impact }) => ({ co
 
 RULES
 - Start exactly with: ${greeting}
+- Write like a thoughtful business colleague. Avoid sales hype, technical jargon and pressure.
 - Follow the template's friendly, plain-English tone and short paragraphs. Personalize naturally; do not write a report, scorecard or technical list.
 - Mention 1 or 2 supplied findings and return their codes. Use one finding if only one is verified.
 - Use the real company name. Mention industry/city only if provided: ${input.industry || "not provided"}, ${input.city || "not provided"}.

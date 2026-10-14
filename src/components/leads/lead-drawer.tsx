@@ -17,8 +17,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import { LeadToolsPanel } from "@/components/leads/lead-tools-panel";
 import { LeadProgressBadge } from "@/components/leads/lead-progress-badge";
 import { ApprovalBadge, OutreachBadge, VerificationBadge } from "@/components/status-badges";
+import { EmailConceptAttachment } from "@/components/outreach/email-concept-attachment";
 import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { LeadVideoEditor } from "@/components/outreach/lead-video-editor";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +60,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
       <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">
         <div className="flex flex-wrap items-center gap-2">
           {lead.isRecommended ? <Badge tone="success">Recommended</Badge> : null}
-          <VerificationBadge status={lead.verificationStatus} />
+          <span className="inline-flex items-center gap-1 text-xs"><span className="text-[var(--app-text-muted)]">Email:</span><VerificationBadge status={lead.verificationStatus} /></span>
           <ApprovalBadge status={lead.approvalStatus} />
           <LeadProgressBadge lead={lead} />
           {lead.isPossibleDuplicate ? <Badge tone="warning">Possible duplicate</Badge> : null}
@@ -67,6 +69,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
           <p className="mt-3 text-xs text-[var(--app-text-muted)]">Review decision: {lead.rejectionReason}</p>
         ) : null}
 
+        <LeadToolsPanel key={lead.id} lead={lead} />
         <Tabs defaultValue="business" className="mt-4">
           <TabsList>
             <TabsTrigger value="business">Business</TabsTrigger>
@@ -365,6 +368,9 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
                       title={`${lead.companyName} email preview`}
                       compact
                     />
+                    {outreachRecord.outreachIncludeConcept && message.step === "initial" && message.status !== "sent" ? (
+                      <EmailConceptAttachment leadId={outreachRecord.leadId} version={outreachRecord.visualConceptJobId} available={Boolean(outreachRecord.visualConceptReady)} />
+                    ) : null}
                     <p className="mt-2 text-[11px] text-[var(--app-text-subtle)]">
                       {message.step.replace("_", " ")} · {message.status.replace("_", " ")}
                       {message.sentAt ? ` · ${formatDateTime(message.sentAt)}` : ""}

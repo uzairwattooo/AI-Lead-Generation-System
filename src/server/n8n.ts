@@ -18,10 +18,11 @@ export class N8nDispatchError extends Error {
  * browser can never reach n8n directly.
  */
 export async function dispatchToN8n(
-  target: "leadRequest" | "cancelLeadRequest" | "audit" | "outreach",
+  target: "leadRequest" | "cancelLeadRequest" | "audit" | "outreach" | "leadTools",
   payload: unknown,
 ): Promise<{ dispatched: boolean; detail: string }> {
   const url =
+    target === "leadTools" ? serverEnv.n8nLeadToolsWebhookUrl :
     target === "leadRequest"
       ? serverEnv.n8nLeadRequestWebhookUrl
       : target === "cancelLeadRequest"

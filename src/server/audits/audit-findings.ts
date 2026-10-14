@@ -2,6 +2,9 @@ import type { AuditFinding } from "../../types/index";
 
 export interface HomepageEvidence {
   fetched: boolean;
+  fetchMethod?: "http" | "browser";
+  directFetchError?: string | null;
+  identityText?: string;
   requestedUrl: string;
   finalUrl: string;
   statusCode: number | null;

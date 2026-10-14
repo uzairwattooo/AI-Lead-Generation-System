@@ -9,6 +9,8 @@ import { validateEvidenceDraft } from "@/server/outreach/draft-safety";
 import { buildEvidenceEmailPrompt } from "@/server/outreach/email-template";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { serverEnv } from "@/server/env";
+import { conceptEmail,usableEmail } from "@/server/lead-tools/policy";
+import { renderProfessionalEmail } from "@/server/outreach/email-template";
 import type { AuditFinding } from "@/types";
 
 const schema = z.object({ leadId: z.string().uuid(), mode: z.enum(["draft_only", "send_approved"]) });
@@ -41,9 +43,12 @@ export async function POST(request: Request) {
       approvalStatus: lead.approval_status ?? "",
       gmailMessageId: lead.gmail_message_id,
     });
-    if (!decision.allowed || !lead.audit_report_url) return apiError(decision.reason ?? "Audit report is unavailable.", 409, { code: decision.code });
+    const visualMode = lead.outreach_include_concept === true && Boolean(lead.visual_concept_path && lead.visual_concept_job_id);
+    if (visualMode && (lead.approval_status !== "approved" || lead.do_not_contact || lead.dashboard_deleted_at || lead.gmail_message_id || Number(lead.duplicate_count || 0) > 0 || !usableEmail(lead.email || ""))) return apiError("Concept email is blocked by approval/contact safety.",409);
+    if (!visualMode && (!decision.allowed || !lead.audit_report_url)) return apiError(decision.reason ?? "Audit report is unavailable.", 409, { code: decision.code });
 
     const contactFirstName = lead.contact_name && lead.decision_maker_status === "verified" ? (String(lead.contact_name).trim().split(/\s+/)[0] ?? null) : null;
+    if (parsed.data.mode === "draft_only" && visualMode) return apiError("Use Prepare concept email after reviewing the generated image.",409);
     if (parsed.data.mode === "draft_only") {
       return NextResponse.json({
         mode: parsed.data.mode,
@@ -59,10 +64,18 @@ export async function POST(request: Request) {
       return apiError("The evidence-based email draft has not been approved.", 409);
     }
     const draftErrors = validateEvidenceDraft({ subject: lead.outreach_subject, body: String(lead.outreach_plain_text_body || lead.outreach_body || "").split(/\n\nBest regards,/i)[0] || "", findingCodes: findings.slice(0, 2).map((finding) => finding.code), verifiedFindings: findings });
+    if (visualMode) {
+      const copy = conceptEmail(lead.company_name,contactFirstName);
+      const expected = renderProfessionalEmail({companyName:lead.company_name,body:copy.body,findings:[]});
+      if (lead.outreach_subject !== copy.subject || lead.outreach_plain_text_body !== expected.plainText || lead.outreach_html_body !== expected.html) return apiError("Prepare and approve the latest concept email again.",409);
+      const {data:job,error:jobError}=await admin.from("codenativex_lead_tool_jobs").select("target,status").eq("id",lead.visual_concept_job_id).eq("lead_id",lead.id).maybeSingle();
+      if(jobError) throw new Error(jobError.message);
+      if(!job || job.status!=="completed" || job.target.website!==lead.website) return apiError("Concept does not match the current website; regenerate it.",409);
+    }
     // Old approved drafts may still contain the attachment/booking language. Require a fresh preview.
-    if (draftErrors.some((message) => /First-touch|unresolved|unapproved/.test(message))) return apiError("Regenerate and approve the new first-touch email before sending.", 409);
+    if (!visualMode && draftErrors.some((message) => /First-touch|unresolved|unapproved/.test(message))) return apiError("Regenerate and approve the new first-touch email before sending.", 409);
     const sendKey = randomUUID();
-    const { data: claimed, error: claimError } = await admin.from("lead_pipeline").update({ outreach_status: "sending", outreach_send_key: sendKey, updated_at: new Date().toISOString() }).eq("id", lead.id).eq("email_preview_status", "approved").is("gmail_message_id", null).neq("outreach_status", "sending").select("id").maybeSingle();
+    const { data: claimed, error: claimError } = await admin.from("lead_pipeline").update({ outreach_status: "sending", outreach_send_key: sendKey, updated_at: new Date().toISOString() }).eq("id", lead.id).eq("email_preview_status", "approved").is("gmail_message_id", null).eq("approval_status","approved").eq("do_not_contact",false).is("dashboard_deleted_at",null).neq("outreach_status", "sending").select("id").maybeSingle();
     if (claimError) throw new Error(`Could not claim outreach send: ${claimError.message}`);
     if (!claimed) return apiError("Duplicate send prevented: this lead is already sending or sent.", 409);
     return NextResponse.json({
@@ -75,6 +88,11 @@ export async function POST(request: Request) {
       subject: lead.outreach_subject,
       html: lead.outreach_html_body,
       plainText: lead.outreach_plain_text_body,
+      includeConcept: visualMode,
+      conceptJobId: visualMode ? lead.visual_concept_job_id : null,
+      adminNotificationEmail: serverEnv.adminNotificationEmail,
+      smtpFromEmail: serverEnv.smtpFromEmail,
+      dashboardUrl: process.env.CODENATIVEX_ADMIN_DASHBOARD_URL || process.env.NEXT_PUBLIC_SITE_URL || "",
       reportFilename: lead.audit_report_filename,
       auditStatus: lead.audit_status,
       auditScore: lead.audit_score,

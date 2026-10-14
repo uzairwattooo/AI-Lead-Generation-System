@@ -2,6 +2,8 @@ import type { AuditFinding, AuditStatus } from "@/types";
 
 export interface AuditSafetyInput {
   websiteIdentityVerified: boolean;
+  homepageError?: string | null;
+  nonBusinessWebsite?: boolean;
   websiteIdentityConfidence: number;
   homepageFetched: boolean;
   analyzedUrlValid: boolean;
@@ -39,17 +41,15 @@ export function evaluateAuditOutreachSafety(input: AuditSafetyInput): AuditSafet
     reason,
   });
 
-  if (!input.websiteIdentityVerified) {
-    return block("WEBSITE_IDENTITY_NOT_VERIFIED", "The official website identity was not verified.");
-  }
-  if (input.websiteIdentityConfidence < input.confidenceThreshold) {
-    return block(
-      "LOW_WEBSITE_IDENTITY_CONFIDENCE",
-      `Website identity confidence ${input.websiteIdentityConfidence} is below the required ${input.confidenceThreshold}.`,
-    );
-  }
+  if(input.nonBusinessWebsite) return block("NON_BUSINESS_WEBSITE_URL","The saved URL is an email provider, directory or unrelated portal; confirm the business website.");
   if (!input.analyzedUrlValid) return block("INVALID_AUDIT_URL", "The analyzed website URL is invalid.", true);
-  if (!input.homepageFetched) return block("WEBSITE_FETCH_FAILED", "The homepage could not be fetched.", true);
+  if (!input.homepageFetched) {
+    const error=input.homepageError||"";
+    const blocked=/HTTP_(401|403|429)|BOT_CHALLENGE|BROWSER_ACCESS_BLOCKED/.test(error);
+    return block(blocked?"AUDIT_ACCESS_BLOCKED":"WEBSITE_FETCH_FAILED",blocked?"Automated audit access was blocked or rate limited. No website defect is inferred.":`The homepage could not be fetched${error?` (${error})`:""}.`,true);
+  }
+  if (!input.websiteIdentityVerified) return block("WEBSITE_IDENTITY_NOT_VERIFIED", "The fetched website could not be matched to the business name and contact/location evidence.");
+  if (input.websiteIdentityConfidence < input.confidenceThreshold) return block("LOW_WEBSITE_IDENTITY_CONFIDENCE",`Website identity confidence ${input.websiteIdentityConfidence} is below the required ${input.confidenceThreshold}.`);
   if (input.findings.length === 0) {
     return block("NO_VERIFIED_FINDINGS", "The audit did not produce any verified findings.");
   }

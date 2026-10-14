@@ -24,6 +24,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     const { error } = await admin.from("lead_pipeline").update({
       outreach_subject: null,
       outreach_body: null,
+      outreach_include_concept: false,
       email_preview_status: "pending_generation",
       human_review_required: true,
       outreach_approved_at: null,
