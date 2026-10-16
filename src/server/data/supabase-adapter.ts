@@ -628,7 +628,7 @@ export class SupabaseAdapter implements LeadRepository {
       this.client.rpc("codenativex_dashboard_live_summary"),
       this.rows(TABLES.requests,q=>q.order("requested_at",{ascending:false}).limit(6)),
       this.listActivity(8),
-      this.client.from(TABLES.leads).select("id,company_name,job_id,updated_at,last_outreach_error,audit_error_message")
+      this.client.from(TABLES.leads).select("id,company_name,updated_at,last_outreach_error,audit_error_message")
         .is("dashboard_deleted_at",null).or("audit_status.in.(audit_failed,audit_needs_review),outreach_status.in.(failed,blocked),last_outreach_error.not.is.null")
         .order("updated_at",{ascending:false}).limit(5),
     ]);
@@ -636,7 +636,7 @@ export class SupabaseAdapter implements LeadRepository {
     if(issues.error)throw new Error(issues.error.message);
     const data=summary.data as Omit<DashboardOverview,"recentRequests"|"itemsNeedingReview">;
     return {...data,mode:"live",recentRequests:requests.map(mapRequest),recentActivity:activity,
-      itemsNeedingReview:(issues.data||[]).map(row=>({id:`issue-${row.id}`,leadId:row.id,requestId:row.job_id,actor:"system" as const,action:"current_issue",severity:"warning" as const,message:`${row.company_name}: ${row.last_outreach_error||row.audit_error_message||"Needs review"}`,createdAt:row.updated_at}))};
+      itemsNeedingReview:(issues.data||[]).map(row=>({id:`issue-${row.id}`,leadId:row.id,requestId:null,actor:"system" as const,action:"current_issue",severity:"warning" as const,message:`${row.company_name}: ${row.last_outreach_error||row.audit_error_message||"Needs review"}`,createdAt:row.updated_at}))};
   }
 
   async listRequests(): Promise<LeadSearchRequest[]> {
