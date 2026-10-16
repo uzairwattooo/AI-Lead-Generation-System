@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { LeadToolsPanel } from "@/components/leads/lead-tools-panel";
+import { LeadOperations } from "@/components/operations/lead-operations";
 import { LeadProgressBadge } from "@/components/leads/lead-progress-badge";
 import { ApprovalBadge, OutreachBadge, VerificationBadge } from "@/components/status-badges";
 import { EmailConceptAttachment } from "@/components/outreach/email-concept-attachment";
@@ -77,8 +78,10 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
             <TabsTrigger value="verification">Verification</TabsTrigger>
             <TabsTrigger value="outreach">Outreach</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
+            <TabsTrigger value="history">History &amp; retry</TabsTrigger>
           </TabsList>
 
+          <TabsContent value="history"><LeadOperations leadId={lead.id}/></TabsContent>
           <TabsContent value="business" className="space-y-5">
             <section>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-subtle)]">

@@ -30,7 +30,5 @@ export const serverEnv = {
 } as const;
 
 export function isDemoMode(): boolean {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "true") return true;
-  // Without Supabase credentials there is no live backend to talk to.
-  return !serverEnv.supabaseUrl || !serverEnv.supabaseAnonKey;
+  return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 }

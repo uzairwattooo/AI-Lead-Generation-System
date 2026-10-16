@@ -24,9 +24,10 @@ export function apiError(message: string, status: number, details?: unknown) {
 export async function requireSession(): Promise<
   { ok: true; email: string } | { ok: false; response: NextResponse }
 > {
-  if (isDemoMode() || !isSupabaseConfigured) {
+  if (isDemoMode()) {
     return { ok: true, email: "demo@codenativex.com" };
   }
+  if (!isSupabaseConfigured) return {ok:false,response:apiError("Live database configuration is missing. Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY; sample data was not loaded.",503)};
   const user = await getCurrentUser();
   if (!user) {
     return { ok: false, response: apiError("You must be signed in to access this resource.", 401) };

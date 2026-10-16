@@ -14,8 +14,8 @@ export async function GET() {
   try {
     const demo = isDemoMode();
     const status: AgentConnectionStatus = {
-      opportunityHunter: demo ? "degraded" : serverEnv.n8nLeadRequestWebhookUrl ? "online" : "offline",
-      outreachAgent: demo ? "degraded" : serverEnv.n8nOutreachWebhookUrl ? "online" : "offline",
+      opportunityHunter: demo ? "degraded" : serverEnv.n8nLeadRequestWebhookUrl ? "configured" : "offline",
+      outreachAgent: demo ? "degraded" : serverEnv.n8nOutreachWebhookUrl ? "configured" : "offline",
       checkedAt: new Date().toISOString(),
       mode: demo ? "demo" : "live",
     };

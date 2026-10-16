@@ -216,6 +216,7 @@ export class DemoAdapter implements LeadRepository {
       .sort((a, b) => b.count - a.count);
 
     return {
+      mode:"demo",
       metrics: {
         totalLeadsFound: leads.length,
         verifiedLeads: leads.filter((lead) => lead.verificationStatus === "verified").length,

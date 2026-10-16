@@ -337,6 +337,8 @@ export interface OutreachMessage {
 }
 
 export interface OutreachRecord {
+  adminNotificationStatus?: string | null;
+  adminNotificationError?: string | null;
   id: string;
   leadId: string;
   companyName: string;
@@ -360,6 +362,7 @@ export interface OutreachRecord {
 }
 
 export interface ReplyRecord {
+  requestedAction?: string;
   id: string;
   leadId: string;
   outreachId: string;
@@ -432,6 +435,8 @@ export interface PipelineStageSummary {
 }
 
 export interface DashboardOverview {
+  mode?: "live" | "demo";
+  updatedAt?: string;
   metrics: DashboardMetrics;
   recentRequests: LeadSearchRequest[];
   pipeline: PipelineStageSummary[];
@@ -465,8 +470,8 @@ export interface Paginated<T> {
 }
 
 export interface AgentConnectionStatus {
-  opportunityHunter: "online" | "degraded" | "offline";
-  outreachAgent: "online" | "degraded" | "offline";
+  opportunityHunter: "online" | "configured" | "degraded" | "offline";
+  outreachAgent: "online" | "configured" | "degraded" | "offline";
   checkedAt: string;
   mode: "live" | "demo";
 }

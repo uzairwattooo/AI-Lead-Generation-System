@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { ActivityList } from "@/components/activity-list";
+import { OperationsPanel } from "@/components/operations/operations-panel";
 import { MetricStrip, type Metric } from "@/components/metric-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { RequestStatusBadge } from "@/components/status-badges";
@@ -21,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { useOverview } from "@/hooks/use-lead-data";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatDate, formatDateTime, formatNumber } from "@/lib/format";
 
 export function OverviewClient() {
   const { data, isPending, isError, error, refetch } = useOverview();
@@ -43,17 +44,17 @@ export function OverviewClient() {
 
   const metrics: Metric[] = data
     ? [
-        { label: "Total Leads", value: data.metrics.totalLeadsFound, icon: Users, tone: "primary" },
-        { label: "Verified", value: data.metrics.verifiedLeads, icon: ShieldCheck, tone: "success" },
+        { label: "Unique businesses", value: data.metrics.totalLeadsFound, icon: Users, tone: "primary",hint:"Across live discovery and pipeline records; promoted businesses counted once" },
+        { label: "Verified emails", value: data.metrics.verifiedLeads, icon: ShieldCheck, tone: "success" },
         {
           label: "High Potential",
           value: data.metrics.highPotentialLeads,
           icon: Star,
           tone: "success",
-          hint: "Score 80 or above",
+          hint: "Recorded qualification score 80 or above",
         },
         { label: "Pending Approval", value: data.metrics.pendingApproval, icon: CheckSquare, tone: "warning" },
-        { label: "Emails Sent", value: data.metrics.emailsSent, icon: Mail },
+        { label: "Initial emails sent", value: data.metrics.emailsSent, icon: Mail },
         { label: "Replies", value: data.metrics.repliesReceived, icon: MessageSquare },
         { label: "Meetings Booked", value: data.metrics.meetingsBooked, icon: CalendarCheck, tone: "success" },
       ]
@@ -87,8 +88,10 @@ export function OverviewClient() {
       ) : (
         <div className="space-y-4">
           <section aria-label="Summary metrics">
+            <p className="mb-2 text-xs text-[var(--app-text-muted)]">{data.mode==="demo"?"Demo preview · sample data":"Live database totals"}{data.updatedAt?` · Updated ${formatDateTime(data.updatedAt)}`:""}</p>
             <MetricStrip metrics={metrics} />
           </section>
+          {data.mode!=="demo"?<OperationsPanel />:null}
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <Card className="xl:col-span-2">

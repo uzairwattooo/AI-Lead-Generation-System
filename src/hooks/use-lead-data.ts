@@ -34,6 +34,7 @@ export function useOverview() {
   return useQuery({
     queryKey: queryKeys.overview,
     queryFn: ({ signal }) => leadService.getOverview(signal),
+    refetchInterval: 15000,
   });
 }
 
@@ -100,11 +101,11 @@ export function useLead(id: string | null) {
 }
 
 export function useOutreach() {
-  return useQuery({ queryKey: queryKeys.outreach, queryFn: ({ signal }) => leadService.listOutreach(signal) });
+  return useQuery({ queryKey: queryKeys.outreach, queryFn: ({ signal }) => leadService.listOutreach(signal), refetchInterval:10000 });
 }
 
 export function useReplies() {
-  return useQuery({ queryKey: queryKeys.replies, queryFn: ({ signal }) => leadService.listReplies(signal) });
+  return useQuery({ queryKey: queryKeys.replies, queryFn: ({ signal }) => leadService.listReplies(signal), refetchInterval:15000 });
 }
 
 export function useMeetings() {
@@ -119,6 +120,7 @@ export function useActivity(limit = 100) {
   return useQuery({
     queryKey: queryKeys.activity(limit),
     queryFn: ({ signal }) => leadService.listActivity(limit, signal),
+    refetchInterval:15000,
   });
 }
 
