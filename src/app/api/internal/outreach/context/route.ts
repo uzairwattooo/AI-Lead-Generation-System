@@ -10,7 +10,6 @@ import { buildEvidenceEmailPrompt } from "@/server/outreach/email-template";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { serverEnv } from "@/server/env";
 import { conceptEmail,usableEmail } from "@/server/lead-tools/policy";
-import { sameConceptWebsite } from "@/server/lead-tools/concept-website";
 import { renderProfessionalEmail } from "@/server/outreach/email-template";
 import { websiteMissing,websiteDevelopmentEmail,developmentOutreachBlock } from "@/server/outreach/website-development";
 import type { AuditFinding } from "@/types";
@@ -85,7 +84,7 @@ export async function POST(request: Request) {
       if (lead.outreach_subject !== copy.subject || lead.outreach_plain_text_body !== expected.plainText || lead.outreach_html_body !== expected.html) return apiError("Prepare and approve the latest concept email again.",409);
       const {data:job,error:jobError}=await admin.from("codenativex_lead_tool_jobs").select("target,status").eq("id",lead.visual_concept_job_id).eq("lead_id",lead.id).maybeSingle();
       if(jobError) throw new Error(jobError.message);
-      if(!job || job.status!=="completed" || !sameConceptWebsite(job.target?.website,lead.website)) return apiError("Concept does not match the current website; regenerate it.",409);
+      if(!job || job.status!=="completed" || job.target.website!==lead.website) return apiError("Concept does not match the current website; regenerate it.",409);
     }
     // Old approved drafts may still contain the attachment/booking language. Require a fresh preview.
     if (!visualMode && !developmentMode && draftErrors.some((message) => /First-touch|unresolved|unapproved/.test(message))) return apiError("Regenerate and approve the new first-touch email before sending.", 409);
