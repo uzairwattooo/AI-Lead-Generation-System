@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { apiError, handleRouteError, requireSession } from "@/server/api";
 import { getRepositoryContext } from "@/server/data";
+import { prepareWebsiteDevelopment } from "@/server/outreach/prepare-website-development";
 import { dispatchToN8n } from "@/server/n8n";
 
 const schema = z.object({
@@ -31,13 +32,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const dispatch = await dispatchToN8n("audit", {
-      queuedBy: session.email,
-      leadIds: records.map((record) => record.leadId),
-      mode: "audit_and_prepare_draft",
-    });
-
-    return NextResponse.json({ queued: records.length, records, ...dispatch }, { status: 201 });
+    const auditIds:string[]=[];let developmentDrafts=0;
+    for(const record of records){
+      const lead=await repository.getLead(record.leadId);
+      if(lead&&!lead.website){await prepareWebsiteDevelopment(record.leadId);developmentDrafts++;}
+      else auditIds.push(record.leadId);
+    }
+    const dispatch = auditIds.length ? await dispatchToN8n("audit", {queuedBy:session.email,leadIds:auditIds,mode:"audit_and_prepare_draft"}) : {dispatched:true,detail:"Website development email drafts are ready for your approval. No website audit was attempted."};
+    return NextResponse.json({ queued: records.length, records, developmentDrafts, ...dispatch }, { status: 201 });
   } catch (error) {
     return handleRouteError(error);
   }

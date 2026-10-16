@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { CONTACT_SEARCH_TIMEOUT_MS, CONTACT_PROVIDER_TIMEOUT_MS } from "./execution-policy";
 import { assertPublicHttpUrl } from "@/server/audits/audit-engine";
 import { contactCandidateSchema, verifyPublishedContact, type ContactCandidate } from "./policy";
+import { CONCEPT_OUTPUT_WIDTH, planConceptSegments } from "./concept-layout";
 
 type Target = { companyName: string; city?: string | null; website?: string | null };
 function apiKey() { const key = process.env.OPENAI_API_KEY; if (!key) throw new Error("Configure OPENAI_API_KEY on the dashboard server."); return key; }
@@ -56,18 +57,47 @@ export async function captureConcept(target: Target): Promise<{ before: Buffer; 
   const token = process.env.BROWSERLESS_TOKEN; if(!token) throw new Error("Configure BROWSERLESS_TOKEN for full-page homepage capture.");
   const endpoint = new URL(process.env.BROWSERLESS_SCREENSHOT_URL || "https://production-sfo.browserless.io/screenshot");
   endpoint.searchParams.set("token",token);
-  const shot = await fetch(endpoint, { method:"POST",headers:{"content-type":"application/json"},signal:AbortSignal.timeout(65000),body:JSON.stringify({url:target.website,viewport:{width:1440,height:1000},gotoOptions:{waitUntil:"networkidle2",timeout:45000},options:{fullPage:true,type:"png"}})});
+  const deadline = AbortSignal.timeout(260000);
+  const shot = await fetch(endpoint, { method:"POST",headers:{"content-type":"application/json"},signal:AbortSignal.any([deadline,AbortSignal.timeout(65000)]),body:JSON.stringify({url:target.website,viewport:{width:1440,height:1000},scrollPage:true,gotoOptions:{waitUntil:"networkidle2",timeout:45000},options:{fullPage:true,type:"png"}})});
   if(!shot.ok) throw new Error(`Full-page capture returned HTTP ${shot.status}.`);
   const before = Buffer.from(await shot.arrayBuffer());
   if(before.length > 20_000_000) throw new Error("Homepage screenshot exceeds the 20 MB limit.");
   const meta = await sharp(before,{limitInputPixels:60_000_000}).metadata();
   if(!meta.width || !meta.height) throw new Error("Screenshot provider did not return a valid image.");
-  const form = new FormData(); form.set("model",process.env.HOMEPAGE_IMAGE_MODEL || "gpt-image-1"); form.set("size","1024x1536"); form.set("quality","medium");
-  form.set("image",new Blob([new Uint8Array(before)],{type:"image/png"}),"current-homepage.png");
-  form.set("prompt",`Redesign the complete homepage shown in this reference for ${target.companyName}. Generate one polished full homepage UI concept, from navigation/header through hero, services, supporting sections, contact and footer; fit the complete page in a tall image without cropping the footer. Preserve the real business identity, existing branding and services. Improve hierarchy, spacing, readability, and enquiry paths. No invented customers, testimonials, ratings, awards, percentages, prices or performance metrics. No before/after split, no browser chrome. This is only an illustrative design proposal.`);
-  const data=await providerJson(await fetch("https://api.openai.com/v1/images/edits",{method:"POST",headers:{authorization:`Bearer ${apiKey()}`},body:form,signal:AbortSignal.timeout(180000)}));
-  if(!data.data?.[0]?.b64_json) throw new Error("Image generation returned no image.");
-  const after=Buffer.from(data.data[0].b64_json,"base64");
+  const segments = planConceptSegments(meta.width,meta.height);
+  const key = apiKey();
+  const brandReference = await sharp(before).extract({left:0,top:0,width:meta.width,height:Math.min(meta.height,Math.max(1,Math.round(meta.width*.5)))}).png().toBuffer();
+  const overview = await sharp(before).resize({width:640,withoutEnlargement:true}).png().toBuffer();
+  const cancel = new AbortController();
+  const generated = await Promise.allSettled(segments.map(async(segment)=>{
+    try {
+      const source = await sharp(before).extract({left:0,top:segment.top,width:meta.width!,height:segment.height}).png().toBuffer();
+      const form = new FormData();
+      form.set("model",process.env.HOMEPAGE_IMAGE_MODEL || "gpt-image-1");
+      const ratio = segment.outputHeight / CONCEPT_OUTPUT_WIDTH;
+      form.set("size",ratio > 1.25 ? "1024x1536" : ratio < .8 ? "1536x1024" : "1024x1024");
+      form.set("quality","high");
+      form.append("image[]",new Blob([new Uint8Array(source)],{type:"image/png"}),`homepage-segment-${segment.index+1}.png`);
+      form.append("image[]",new Blob([new Uint8Array(brandReference)],{type:"image/png"}),"brand-reference.png");
+      form.append("image[]",new Blob([new Uint8Array(overview)],{type:"image/png"}),"full-page-context.png");
+      form.set("prompt",`Create a polished website redesign for ${target.companyName}. This is vertical segment ${segment.index+1} of ${segments.length} of ONE complete homepage. Image 1 is the exact content region to redesign. Image 2 is branding guidance only. Image 3 shows the complete homepage for context only. Render ONLY the content from image 1, in its original top-to-bottom order. Do not reproduce the complete page or choose a random detail. ${segment.index===0?"Include the actual navigation/header and hero at the TOP of this first segment.":"This is a continuation: do not add a new navigation, hero, page title or repeated header."} ${segment.index===segments.length-1?"Include the contact area and complete footer at the BOTTOM of this last segment if present in the source region.":"Do not add a footer; further sections continue below this segment."} Use consistent branding, colors, typography and page margins across the whole proposal. Preserve real business identity and services. Improve hierarchy, spacing, readability and enquiry paths. Use short readable labels; do not invent long copy or gibberish. No invented customers, testimonials, ratings, awards, percentages, prices or metrics. Ignore cookie notices and browser overlays. No before/after split, browser chrome, device frame or illustration of a monitor. Fill the canvas with this UI segment without clipping its top or bottom. This is an illustrative design proposal.`);
+      const data=await providerJson(await fetch("https://api.openai.com/v1/images/edits",{method:"POST",headers:{authorization:`Bearer ${key}`},body:form,signal:AbortSignal.any([deadline,cancel.signal,AbortSignal.timeout(180000)])}));
+      if(!data.data?.[0]?.b64_json) throw new Error(`Image generation returned no image for homepage segment ${segment.index+1}. No partial proposal was saved.`);
+      const image=Buffer.from(data.data[0].b64_json,"base64");
+      const info=await sharp(image,{limitInputPixels:20_000_000}).metadata();
+      if(!info.width || !info.height || info.width<512 || info.height<512)throw new Error("Image provider returned an invalid homepage segment. No partial proposal was saved.");
+      // Small ratio adjustments keep every generated row; never crop out a footer.
+      return sharp(image).resize(CONCEPT_OUTPUT_WIDTH,segment.outputHeight,{fit:"fill"}).png().toBuffer();
+    } catch(error) {cancel.abort();throw error;}
+  }));
+  const failed = generated.find(result=>result.status==="rejected");
+  if(failed?.status==="rejected")throw failed.reason;
+  const panels=generated.map(result=>{
+    if(result.status!=="fulfilled")throw new Error("Homepage proposal did not complete.");
+    return result.value;
+  });
+  const fullHeight = segments.reduce((sum,segment)=>sum+segment.outputHeight,0);
+  const after=await sharp({create:{width:CONCEPT_OUTPUT_WIDTH,height:fullHeight,channels:4,background:"#ffffff"}}).composite(panels.map((input,index)=>({input,left:0,top:segments[index]!.outputTop}))).png().toBuffer();
   const width=760; const height=Math.min(10000,Math.max(1600,Math.round(meta.height/meta.width*width)));
   const beforePanel=await sharp(before).resize(width,height,{fit:"contain",background:"#f4f5f7"}).png().toBuffer();
   const afterPanel=await sharp(after).resize(width,height,{fit:"contain",background:"#f4f5f7"}).png().toBuffer();

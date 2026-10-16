@@ -6,8 +6,10 @@ export function leadProgress(lead: Lead): { label: string; active: boolean; tone
   if (["initial_email_sent", "awaiting_reply", "follow_up_1", "follow_up_2", "follow_up_3"].includes(lead.outreachStatus)) return { label: "Email sent · Waiting for reply", active: false, tone: "success" };
   if (["replied", "interested", "meeting_booked", "not_interested", "do_not_contact"].includes(lead.outreachStatus)) return { label: lead.outreachStatus.replaceAll("_", " "), active: false, tone: "success" };
   if (lead.rawOutreachStatus === "sending") return { label: "Processing · Sending email", active: true, tone: "info" };
+  if (lead.rawOutreachStatus === "queued" && lead.auditBlockReason) return {label:"Dispatch needs attention · Open history / retry",active:false,tone:"danger"};
   if (lead.emailPreviewStatus === "approved" || lead.outreachStatus === "queued") return { label: "Email queued for sending", active: false, tone: "info" };
   if (["awaiting_approval", "email_draft_ready"].includes(lead.outreachStatus) || lead.emailPreviewStatus === "awaiting_approval") return { label: "Draft ready · Approve email", active: false, tone: "warning" };
+  if (lead.auditStatus === "website_missing") return {label:"Website missing · Prepare website development email",active:false,tone:"neutral"};
   if (lead.auditStatus === "audit_processing") return { label: "Processing · Website audit", active: true, tone: "info" };
   if (lead.auditStatus === "audit_pending") return { label: "Queued · Waiting for audit", active: false, tone: "info" };
   if (lead.emailPreviewStatus === "pending_generation" || lead.rawOutreachStatus === "generating") return { label: "Queued · Waiting for email draft", active: false, tone: "info" };

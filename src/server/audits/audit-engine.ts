@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { load } from "cheerio";
+import { prepareWebsiteDevelopment } from "@/server/outreach/prepare-website-development";
+import { websiteMissing } from "@/server/outreach/website-development";
 import { fetchAuditHomepage } from "./homepage-fetch";
 import { assessWebsiteIdentity, nonBusinessWebsite } from "./website-identity";
 
@@ -140,7 +142,7 @@ export async function auditHomepage(url: string): Promise<HomepageEvidence> {
   };
   try {
     const { response, body, finalUrl, bytes, method, directError } = await fetchHtml(url);
-    if (!response.ok) return { ...empty, finalUrl, statusCode: response.status, hasHttps: finalUrl.startsWith("https://"), error: `HTTP_${response.status}` };
+    if (!response.ok) return { ...empty, finalUrl, statusCode: response.status, hasHttps: finalUrl.startsWith("https://"), fetchMethod: method, directFetchError: directError || null, error: directError || `HTTP_${response.status}` };
     const $ = load(body);
     $("script,style,noscript").remove();
     const copyrightYears = [...body.matchAll(/(?:©|copyright[^0-9]{0,20})(20\d{2})/gi)].map((match) => Number(match[1]));
@@ -267,6 +269,14 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
   if (leadError) throw new Error(`Could not load audit lead: ${leadError.message}`);
   if (!leadData) throw new Error("Lead not found.");
   const lead = leadData as Row;
+  if (websiteMissing(lead.website)) {
+    const {data:missingCandidate,error:missingError}=await admin.from("lead_discovery_candidates").select("resolved_website,website").eq("lead_key",text(lead.lead_key)).order("updated_at",{ascending:false}).limit(1).maybeSingle();
+    if(missingError)throw new Error(missingError.message);
+    if(websiteMissing(missingCandidate?.resolved_website)&&websiteMissing(missingCandidate?.website)) {
+      if(options.replyReport)throw new Error("This lead has no website to audit. A website audit report cannot be generated; manual reply review is required.");
+      return prepareWebsiteDevelopment(leadId);
+    }
+  }
   const auditId = randomUUID();
   const startedAt = new Date().toISOString();
 
@@ -282,7 +292,7 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
   if(claimError) throw new Error(`Could not start audit: ${claimError.message}`);
   if(candidateError) throw new Error(`Could not load website identity: ${candidateError.message}`);
   const candidate = (candidateData ?? {}) as Row;
-  const auditedUrl = text(lead.website) || text(candidate.resolved_website);
+  const auditedUrl = text(lead.website) || text(candidate.resolved_website) || text(candidate.website);
   const blockedWebsite = Boolean(auditedUrl && nonBusinessWebsite(auditedUrl));
   const homepage = auditedUrl && !blockedWebsite ? await auditHomepage(auditedUrl) : ({ fetched: false, requestedUrl: "", finalUrl: "", statusCode: null, hasHttps: null, title: null, metaDescription: null, h1: [], hasViewportMeta: null, canonicalUrl: null, hasContactCta: null, hasForm: null, htmlBytes: null, copyrightYear: null, technologyHints: [], brokenLinks: [], checkedResourceCount: 0, error: blockedWebsite ? "NON_BUSINESS_WEBSITE_URL" : "NO_WEBSITE" } satisfies HomepageEvidence);
   const pageSpeedUrl = blockedWebsite ? "" : homepage.fetched ? homepage.finalUrl : auditedUrl;
@@ -398,6 +408,7 @@ export async function runWebsiteAudit(leadId: string, options: { replyReport?: b
 
   const successful = safety.allowed && audit.reportAvailable;
   const leadUpdate = {
+    outreach_kind: "website_audit",
     audit_id: auditId,
     audit_status: successful ? "audit_completed" : audit.status,
     audit_score: audit.score,

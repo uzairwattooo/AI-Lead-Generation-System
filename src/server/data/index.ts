@@ -13,9 +13,8 @@ export interface RepositoryContext {
 }
 
 /**
- * Resolves the adapter for the current request. Demo mode is used when it is
- * explicitly enabled or when Supabase credentials are absent, so the UI is
- * always previewable without leaking a half-configured live backend.
+ * Resolves the adapter for the current request. Demo mode is used only when explicitly enabled. Missing live configuration
+ * must fail clearly instead of silently substituting sample data.
  */
 export async function getRepositoryContext(): Promise<RepositoryContext> {
   if (isDemoMode()) {
@@ -24,7 +23,7 @@ export async function getRepositoryContext(): Promise<RepositoryContext> {
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
-    return { repository: new DemoAdapter(), userEmail: "demo@codenativex.com" };
+    throw new Error("Live database configuration is missing. Demo data is only available when explicitly enabled.");
   }
 
   const { data } = await supabase.auth.getUser();

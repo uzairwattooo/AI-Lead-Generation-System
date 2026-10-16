@@ -1,3 +1,22 @@
+// Keep provider URLs and tokens out of error messages; expose only network codes.
+export function fetchFailureCode(error: unknown): string {
+ const codes: string[] = [];
+ const pending: unknown[] = [error];
+ const seen = new Set<unknown>();
+ while (pending.length && seen.size < 24) {
+  const current = pending.shift();
+  if (!current || typeof current !== "object" || seen.has(current)) continue;
+  seen.add(current);
+  const value = current as { code?: unknown; cause?: unknown; name?: unknown; errors?: unknown };
+  if (typeof value.code === "string" && /^[A-Z][A-Z0-9_]{1,100}$/.test(value.code)) codes.push(value.code);
+  if (value.name === "TimeoutError" || value.name === "AbortError") codes.push("REQUEST_TIMEOUT");
+  if (value.cause) pending.push(value.cause);
+  if (Array.isArray(value.errors)) pending.push(...value.errors.slice(0, 24));
+ }
+ if (codes.length) return [...new Set(codes)].join("; ");
+ const message = error instanceof Error ? error.message : "";
+ return /^[A-Z][A-Z0-9_]*(?:; [A-Z][A-Z0-9_]*)*$/.test(message) ? message : "WEBSITE_FETCH_FAILED";
+}
 export type PublicUrlValidator=(value:string)=>Promise<URL>;
 export type FetchedHomepage={response:Response;body:string;finalUrl:string;bytes:number;method:'http'|'browser';directError?:string};
 const LIMIT=5_000_000;
@@ -23,9 +42,9 @@ export async function fetchAuditHomepage(value:string,validate:PublicUrlValidato
    directError=isChallenge(body)?'BOT_CHALLENGE':response.ok?'NON_HTML_HOMEPAGE':`HTTP_${response.status}`;break;
   }
   if(!directError)directError='TOO_MANY_REDIRECTS';
- }catch(error){directError=error instanceof Error?error.message:'WEBSITE_FETCH_FAILED';if(['PRIVATE_NETWORK_URL_BLOCKED','INVALID_AUDIT_URL'].includes(directError))throw error;}
+ }catch(error){directError=fetchFailureCode(error);if(['PRIVATE_NETWORK_URL_BLOCKED','INVALID_AUDIT_URL'].includes(directError))throw error;}
  const token=process.env.BROWSERLESS_TOKEN;
- if(!token){if(last&&!last.response.ok)return last;throw new Error(directError);}
+ if(!token){const detail=`${directError}; BROWSERLESS_TOKEN_MISSING`;if(last&&!last.response.ok)return {...last,directError:detail};throw new Error(detail);}
  try{
   const endpoint=new URL(process.env.BROWSERLESS_FUNCTION_URL||process.env.BROWSERLESS_SCREENSHOT_URL||'https://production-sfo.browserless.io/function');
   if(!process.env.BROWSERLESS_FUNCTION_URL)endpoint.pathname=endpoint.pathname.replace(/\/screenshot\/?$/,'/function');
@@ -50,7 +69,7 @@ export async function fetchAuditHomepage(value:string,validate:PublicUrlValidato
   if(new URL(final).hostname.replace(/^www\./,'')!==allowedHost)throw new Error('BROWSER_CROSS_DOMAIN_REDIRECT');
   const status=Number(data.status);if(!Number.isInteger(status)||status<200||status>=400||isChallenge(data.html))throw new Error(`BROWSER_ACCESS_BLOCKED_${status||'UNKNOWN'}`);
   return {response:new Response(data.html,{status,headers:{'content-type':'text/html'}}),body:data.html,finalUrl:final,bytes:Buffer.byteLength(data.html),method:'browser',directError};
- }catch(error){const reason=error instanceof Error?error.message:'BROWSER_FETCH_FAILED';if(last&&!last.response.ok)return {...last,directError:`${directError}; ${reason}`};throw new Error(`${directError}; ${reason}`);}
+ }catch(error){const reason=fetchFailureCode(error);if(last&&!last.response.ok)return {...last,directError:`${directError}; ${reason}`};throw new Error(`${directError}; ${reason}`);}
 }
 export function isChallenge(html:string):boolean {
  const title=(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'').trim();

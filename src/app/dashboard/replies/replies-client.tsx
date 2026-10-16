@@ -23,16 +23,19 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCallQueue, useMarkReplyHandled, useReplies } from "@/hooks/use-lead-data";
 import { REPLY_CLASSIFICATION_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
-import type { ReplyClassification } from "@/types";
+import {replyMatches} from "@/lib/replies/filters";
 
 const TABS: Array<{ value: string; label: string }> = [
   { value: "all", label: "All replies" },
+  { value: "unhandled", label: "Unhandled" },
+  { value: "report", label: "Report requested" },
+  { value: "video", label: "Video requested" },
+  { value: "unsubscribe", label: "Unsubscribe / do not contact" },
   { value: "interested", label: REPLY_CLASSIFICATION_LABELS.interested },
   { value: "pricing_question", label: REPLY_CLASSIFICATION_LABELS.pricing_question },
   { value: "meeting_request", label: REPLY_CLASSIFICATION_LABELS.meeting_request },
   { value: "unclear", label: REPLY_CLASSIFICATION_LABELS.unclear },
   { value: "not_interested", label: REPLY_CLASSIFICATION_LABELS.not_interested },
-  { value: "do_not_contact", label: REPLY_CLASSIFICATION_LABELS.do_not_contact },
 ];
 
 export function RepliesClient() {
@@ -42,7 +45,7 @@ export function RepliesClient() {
   const [tab, setTab] = React.useState("all");
 
   const replies = (repliesQuery.data ?? []).filter(
-    (reply) => tab === "all" || reply.classification === (tab as ReplyClassification),
+    (reply) => replyMatches(reply,tab),
   );
 
   return (
@@ -59,7 +62,7 @@ export function RepliesClient() {
               {item.label}
               {item.value !== "all" ? (
                 <span className="tabular-nums opacity-60">
-                  {(repliesQuery.data ?? []).filter((reply) => reply.classification === item.value).length}
+                  {(repliesQuery.data ?? []).filter((reply) => replyMatches(reply,item.value)).length}
                 </span>
               ) : null}
             </TabsTrigger>

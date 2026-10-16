@@ -24,10 +24,10 @@ const AuthContext = React.createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const demo = !isSupabaseConfigured || publicEnv.demoMode;
+  const demo = publicEnv.demoMode;
   const [client] = React.useState(() => (isSupabaseConfigured ? createSupabaseBrowserClient() : null));
   const [user, setUser] = React.useState<AuthState["user"]>(demo ? DEMO_USER : null);
-  const [loading, setLoading] = React.useState(!demo);
+  const [loading, setLoading] = React.useState(!demo && Boolean(client));
 
   React.useEffect(() => {
     if (demo || !client) return;
@@ -51,10 +51,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = React.useCallback(
     async (email: string, password: string) => {
-      if (demo || !client) {
+      if (demo) {
         setUser(DEMO_USER);
         return;
       }
+      if (!client) throw new Error("Live database authentication is not configured.");
       const { error } = await client.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
     },
@@ -63,10 +64,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = React.useCallback(
     async (email: string, password: string) => {
-      if (demo || !client) {
+      if (demo) {
         setUser(DEMO_USER);
         return true;
       }
+      if (!client) throw new Error("Live database authentication is not configured.");
       const { data, error } = await client.auth.signUp({ email, password });
       if (error) throw new Error(error.message);
       return Boolean(data.session);

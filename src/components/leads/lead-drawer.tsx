@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { LeadToolsPanel } from "@/components/leads/lead-tools-panel";
+import { LeadOperations } from "@/components/operations/lead-operations";
 import { LeadProgressBadge } from "@/components/leads/lead-progress-badge";
 import { ApprovalBadge, OutreachBadge, VerificationBadge } from "@/components/status-badges";
 import { EmailConceptAttachment } from "@/components/outreach/email-concept-attachment";
@@ -77,8 +78,10 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
             <TabsTrigger value="verification">Verification</TabsTrigger>
             <TabsTrigger value="outreach">Outreach</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
+            <TabsTrigger value="history">History &amp; retry</TabsTrigger>
           </TabsList>
 
+          <TabsContent value="history"><LeadOperations leadId={lead.id}/></TabsContent>
           <TabsContent value="business" className="space-y-5">
             <section>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-subtle)]">
@@ -247,12 +250,13 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
           <TabsContent value="audit" className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={lead.auditStatus === "audit_completed" ? "success" : lead.auditStatus === "audit_failed" ? "danger" : lead.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
-                {lead.auditStatus.replace(/_/g, " ")}
+                {lead.auditStatus === "website_missing" ? "Website missing" : lead.auditStatus.replace(/_/g, " ")}
               </Badge>
               {lead.auditScore !== null ? <Badge tone="info">Audit score {lead.auditScore}</Badge> : null}
               {lead.auditConfidence !== null ? <Badge tone="neutral">Confidence {lead.auditConfidence}%</Badge> : null}
             </div>
 
+            {lead.auditStatus === "website_missing" ? <p className="text-xs text-[var(--app-text-muted)]">No official website URL is saved. A technical audit is not applicable; use the website development email in Outreach.</p> : null}
             {lead.auditBlockReason ? (
               <div className="rounded-md border border-amber-warn-100 bg-amber-warn-50 p-3 text-xs text-amber-warn-700 dark:border-amber-warn-700 dark:bg-amber-warn-700/20 dark:text-amber-warn-100">
                 <p className="font-semibold">Audit or outreach blocked</p>
@@ -312,7 +316,7 @@ function LeadBody({ lead, onApprove, onReject }: { lead: Lead; onApprove: () => 
                 </>
               ) : null}
               <Button size="sm" variant="secondary" loading={regenerateAudit.isPending} onClick={() => regenerateAudit.mutate()} disabled={Boolean(outreachRecord?.gmailMessageId)}>
-                <RefreshCw aria-hidden />Regenerate audit
+                <RefreshCw aria-hidden />{lead.auditStatus === "website_missing" ? "Prepare website email" : "Regenerate audit"}
               </Button>
             </div>
           </TabsContent>

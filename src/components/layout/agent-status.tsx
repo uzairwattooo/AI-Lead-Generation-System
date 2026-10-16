@@ -8,12 +8,14 @@ import { useAgentStatus } from "@/hooks/use-lead-data";
 import { formatDateTime } from "@/lib/format";
 
 const TONE = {
+  configured: "info",
   online: "success",
   degraded: "warning",
   offline: "danger",
 } as const;
 
 const LABEL = {
+  configured: "Agents configured",
   online: "Agents online",
   degraded: "Demo mode",
   offline: "Agents offline",
@@ -41,7 +43,7 @@ export function AgentStatusIndicator() {
       ? "offline"
       : data.opportunityHunter === "degraded" || data.outreachAgent === "degraded"
         ? "degraded"
-        : "online";
+        : data.opportunityHunter === "configured" || data.outreachAgent === "configured" ? "configured" : "online";
 
   return (
     <Tooltip>
@@ -54,6 +56,7 @@ export function AgentStatusIndicator() {
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
+        <span className="block">Configuration status; this is not a workflow health check.</span>
         <span className="block">Opportunity Hunter: {data.opportunityHunter}</span>
         <span className="block">Outreach Agent: {data.outreachAgent}</span>
         <span className="mt-1 block opacity-80">Checked {formatDateTime(data.checkedAt)}</span>

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { apiError, handleRouteError, requireSession } from "@/server/api";
 import { getRepositoryContext } from "@/server/data";
-import { dispatchToN8n } from "@/server/n8n";
+import { dispatchApprovedOutreach } from "@/server/operations/outreach-dispatch";
 
 const schema = z.object({ messageId: z.string().min(1) });
 
@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!parsed.success) return apiError("A message id is required.", 422, parsed.error.issues);
     const { repository } = await getRepositoryContext();
     const record = await repository.approveOutreachMessage(id, parsed.data.messageId);
-    const dispatch = await dispatchToN8n("outreach", {
+    const dispatch = await dispatchApprovedOutreach(record.leadId, {
       approvedBy: session.email,
       leadIds: [record.leadId],
       outreachIds: [record.id],

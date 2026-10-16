@@ -4,6 +4,7 @@ import * as React from "react";
 import { Eye, FileDown, Mail, RefreshCw, Send } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { LeadOperations } from "@/components/operations/lead-operations";
 import { EmailConceptAttachment } from "@/components/outreach/email-concept-attachment";
 import { EmailHtmlPreview } from "@/components/outreach/email-html-preview";
 import { OutreachBadge } from "@/components/status-badges";
@@ -61,7 +62,9 @@ export function OutreachClient() {
   const { data, isPending, isError, error, refetch } = useOutreach();
   const approveMessage = useApproveOutreachMessage();
   const [tab, setTab] = React.useState("all");
-  const [preview, setPreview] = React.useState<OutreachRecord | null>(null);
+  const [previewId, setPreviewId] = React.useState<string | null>(null);
+  const preview=(data??[]).find(record=>record.id===previewId)??null;
+  const setPreview=(record:OutreachRecord|null)=>setPreviewId(record?.id??null);
   const regenerateEmail = useRegenerateEmail(preview?.leadId ?? "");
 
   const records = (data ?? []).filter(
@@ -132,11 +135,12 @@ export function OutreachClient() {
                         <OutreachBadge status={record.status} />
                         {record.requiresApproval ? <Badge tone="warning">Approval required</Badge> : null}
                       </span>
+                      {record.adminNotificationStatus?<p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Admin notification: {record.adminNotificationStatus}</p>:null}
                     </TableCell>
                     <TableCell>
                       <span className="flex flex-wrap items-center gap-1">
                         <Badge tone={record.auditStatus === "audit_completed" ? "success" : record.auditStatus === "audit_failed" ? "danger" : record.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
-                          {record.auditStatus.replace(/_/g, " ")}
+                          {record.auditStatus === "website_missing" ? "Website missing" : record.auditStatus.replace(/_/g, " ")}
                         </Badge>
                         {record.auditScore !== null ? <span className="text-xs tabular-nums">{record.auditScore}</span> : null}
                       </span>
@@ -150,7 +154,7 @@ export function OutreachClient() {
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => setPreview(record)}>
                         <Eye aria-hidden />
-                        Review email
+                        {record.status==="queued"||record.status==="outreach_failed"?"Review / retry":"Review email"}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -170,6 +174,7 @@ export function OutreachClient() {
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-3">
+            {preview?<details open={["queued","outreach_failed","outreach_blocked"].includes(preview.status)}><summary className="cursor-pointer text-xs font-medium">Processing, retries &amp; admin notification</summary><div className="mt-2"><LeadOperations leadId={preview.leadId}/></div></details>:null}
             {preview?.auditBlockReason ? (
               <div className="rounded-md border border-amber-warn-100 bg-amber-warn-50 p-3 text-xs text-amber-warn-700 dark:border-amber-warn-700 dark:bg-amber-warn-700/20 dark:text-amber-warn-100">
                 <p className="font-semibold">Blocked reason</p>
@@ -214,8 +219,8 @@ export function OutreachClient() {
                     plainText={message.body}
                     title={`${preview.companyName} email preview`}
                   />
-                  {preview.outreachIncludeConcept && message.step === "initial" && message.status !== "sent" ? (
-                    <EmailConceptAttachment leadId={preview.leadId} version={preview.visualConceptJobId} available={Boolean(preview.visualConceptReady)} />
+                  {preview.outreachIncludeConcept && message.step === "initial" ? (
+                    <EmailConceptAttachment leadId={preview.leadId} version={preview.visualConceptJobId} available={Boolean(preview.visualConceptReady)} sent={message.status === "sent"} />
                   ) : null}
                   {message.sentAt ? (
                     <p className="mt-2 text-[11px] text-[var(--app-text-subtle)]">
@@ -236,7 +241,13 @@ export function OutreachClient() {
                 <Button variant="secondary" loading={regenerateEmail.isPending} onClick={() => regenerateEmail.mutate()}><RefreshCw aria-hidden />Regenerate</Button>
                 <Button
                   loading={approveMessage.isPending}
-                  disabled={!preview.auditReportAvailable || preview.auditStatus !== "audit_completed"}
+                  disabled={
+                    !preview.email || Boolean(preview.gmailMessageId) || !(
+                      preview.auditStatus === "website_missing" ||
+                      (preview.auditStatus === "audit_completed" && preview.auditReportAvailable) ||
+                      (preview.outreachIncludeConcept && preview.visualConceptReady)
+                    )
+                  }
                   onClick={() =>
                     approveMessage.mutate(
                       { outreachId: preview.id, messageId: pendingMessage.id },

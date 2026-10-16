@@ -1,3 +1,4 @@
+import { websiteMissing,developmentOutreachBlock } from "@/server/outreach/website-development";
 /**
  * Live adapter backed by Supabase Postgres.
  *
@@ -21,12 +22,13 @@ import type {
   MeetingRecord,
   OutreachRecord,
   Paginated,
-  PipelineStageSummary,
   ProgressStage,
   ReplyRecord,
   WorkspaceSettings,
   WebsiteAudit,
 } from "@/types";
+import {normalizeReplyClassification} from "@/lib/replies/filters";
+import { requestedReplyAction } from "@/server/outreach/reply-policy";
 import { PROGRESS_STAGE_LABELS } from "@/lib/constants";
 import { recommendedDiscoveryIds } from "./discovery-ranking";
 import { BackendNotConnectedError, type LeadFacets, type LeadQuery, type LeadRepository } from "./repository";
@@ -60,6 +62,7 @@ interface FilterBuilder extends PromiseLike<{ data: Row[] | null; error: { messa
   order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FilterBuilder;
   limit(count: number): FilterBuilder;
   select(columns: string): FilterBuilder;
+  range(from:number,to:number):FilterBuilder;
 }
 
 function str(row: Row, key: string): string {
@@ -85,7 +88,7 @@ function strArray(row: Row, key: string): string[] {
 
 function auditStatus(value: string): Lead["auditStatus"] {
   const normalized = value.toLowerCase();
-  if (normalized === "audit_pending" || normalized === "audit_processing" || normalized === "audit_completed" || normalized === "audit_failed" || normalized === "audit_needs_review") return normalized;
+  if (normalized === "audit_pending" || normalized === "audit_processing" || normalized === "audit_completed" || normalized === "audit_failed" || normalized === "audit_needs_review" || normalized === "website_missing") return normalized;
   return "not_started";
 }
 
@@ -138,11 +141,6 @@ function requestCriteria(row: Row): Row {
   const payload = rowObject(row["input_payload"]);
   const nestedCriteria = rowObject(payload["criteria"]);
   return Object.keys(nestedCriteria).length > 0 ? nestedCriteria : payload;
-}
-
-function rowArray(row: Row, key: string): Row[] {
-  const value = row[key];
-  return Array.isArray(value) ? value.map(rowObject) : [];
 }
 
 function dashboardRequestStatus(value: string, nextWorkflow = ""): LeadSearchRequest["status"] {
@@ -200,105 +198,6 @@ function progressForNextWorkflow(nextWorkflow: string): number | null {
   if (nextWorkflow.startsWith("04")) return 80;
   if (nextWorkflow.startsWith("05")) return 90;
   return null;
-}
-
-function mapDashboardRequest(row: Row): LeadSearchRequest {
-  const criteria = requestCriteria(row);
-  const location = str(row, "location");
-  const country = str(criteria, "country") || str(row, "country");
-  const category = str(row, "category") || "Lead discovery";
-  const leadsFound = num(row, "businesses_found");
-  const verifiedLeads = num(row, "verified_leads");
-
-  return {
-    id: str(row, "job_id"),
-    source:
-      str(criteria, "source") ||
-      strArray(criteria, "sources")[0] ||
-      strArray(row, "sources")[0] ||
-      "google_maps",
-    country,
-    region: str(criteria, "region") || str(criteria, "state"),
-    city: str(criteria, "city") || (location !== country ? location : ""),
-    radiusKm: num(criteria, "radiusKm", num(criteria, "radius_km", num(row, "radius_km"))),
-    categories: strArray(criteria, "categories").length
-      ? strArray(criteria, "categories")
-      : category
-        ? [category]
-        : [],
-    service:
-      str(criteria, "service") ||
-      str(criteria, "service_interest") ||
-      str(row, "service_interest") ||
-      "Lead Discovery",
-    leadType: str(criteria, "leadType") || str(criteria, "lead_type") || "business",
-    requestedLeadCount: num(
-      criteria,
-      "requestedLeadCount",
-      num(criteria, "lead_count", num(row, "requested_leads", Math.max(leadsFound, verifiedLeads))),
-    ),
-    minimumScore: num(criteria, "minimumScore", num(criteria, "minimum_score")),
-    requireEmail: bool(criteria, "requireEmail", bool(criteria, "require_email")),
-    requirePhone: bool(criteria, "requirePhone", bool(criteria, "require_phone")),
-    requireDecisionMaker: bool(
-      criteria,
-      "requireDecisionMaker",
-      bool(criteria, "require_decision_maker"),
-    ),
-    excludedDomains: strArray(criteria, "excludedDomains").length
-      ? strArray(criteria, "excludedDomains")
-      : strArray(criteria, "excluded_domains"),
-    additionalInstructions:
-      str(criteria, "additionalInstructions") || str(criteria, "additional_instructions"),
-    status: dashboardRequestStatus(str(row, "status"), str(row, "next_workflow")),
-    createdAt: str(row, "requested_at"),
-    startedAt: nullableStr(row, "started_at"),
-    completedAt: nullableStr(row, "completed_at"),
-    createdBy: "automation",
-    leadsFound,
-    verifiedLeads,
-    highPotentialLeads: 0,
-    errorMessage: nullableStr(row, "error_message"),
-  };
-}
-
-function mapDashboardJobActivity(row: Row): ActivityEvent {
-  const status = str(row, "status");
-  const completed = status.toLowerCase().includes("completed");
-  const failed = status.toLowerCase().includes("failed") || status.toLowerCase().includes("error");
-  const label = str(row, "category") || "Lead discovery";
-
-  return {
-    id: `job-${str(row, "job_id")}`,
-    requestId: nullableStr(row, "job_id"),
-    leadId: null,
-    actor: "opportunity_hunter",
-    action: status || "discovery_job",
-    message: `${label}: ${num(row, "businesses_found")} businesses found, ${num(row, "verified_leads")} candidates created.`,
-    severity: failed ? "error" : completed ? "success" : "info",
-    createdAt: str(row, "completed_at") || str(row, "requested_at"),
-  };
-}
-
-function mapDashboardReviewActivity(row: Row): ActivityEvent {
-  const error =
-    nullableStr(row, "last_research_error") ??
-    nullableStr(row, "last_enrichment_error") ??
-    nullableStr(row, "last_email_enrichment_error") ??
-    nullableStr(row, "meeting_error");
-  const company = str(row, "company_name") || "Lead";
-  const status = str(row, "next_action") || str(row, "status") || "manual_review";
-
-  return {
-    id: `review-${str(row, "lead_id")}`,
-    requestId: null,
-    leadId: nullableStr(row, "lead_id"),
-    actor: "system",
-    action: status,
-    message: error ? `${company}: ${error}` : `${company} requires manual review (${status}).`,
-    severity: error ? "error" : "warning",
-    createdAt: str(row, "updated_at"),
-  };
 }
 
 function mapRequest(row: Row): LeadSearchRequest {
@@ -402,7 +301,7 @@ function mapLead(row: Row): Lead {
     auditStatus: auditStatus(str(row, "audit_status")),
     auditScore: typeof row["audit_score"] === "number" ? num(row, "audit_score") : null,
     auditConfidence: typeof row["audit_confidence"] === "number" ? num(row, "audit_confidence") : null,
-    auditBlockReason: nullableStr(row, "audit_error_message"),
+    auditBlockReason: nullableStr(row, "last_outreach_error") ?? nullableStr(row,"audit_error_message"),
     emailPreviewStatus: nullableStr(row, "email_preview_status"),
     outreachApprovedAt: nullableStr(row, "outreach_approved_at"),
     outreachVideoUrl: nullableStr(row, "outreach_video_url"),
@@ -586,7 +485,7 @@ function mapOutreach(row: Row): OutreachRecord {
     leadId,
     companyName: str(row, "company_name"),
     email: nullableStr(row, "email"),
-    status: normalizeOutreachStatus(str(row, "outreach_status"), str(row, "reply_intent")),
+    status: str(row,"outreach_status")==="queued" && nullableStr(row,"last_outreach_error") ? "outreach_failed" : normalizeOutreachStatus(str(row, "outreach_status"), str(row, "reply_intent")),
     messages,
     lastContactedAt: nullableStr(row, "last_outreach_at") ?? nullableStr(row, "last_follow_up_at"),
     nextActionAt: nullableStr(row, "next_follow_up_at"),
@@ -599,6 +498,8 @@ function mapOutreach(row: Row): OutreachRecord {
     visualConceptReady: Boolean(nullableStr(row, "visual_concept_path")),
     visualConceptJobId: nullableStr(row, "visual_concept_job_id"),
     auditBlockReason: nullableStr(row, "audit_error_message") ?? nullableStr(row, "last_outreach_error"),
+    adminNotificationStatus: nullableStr(row,"admin_notification_status"),
+    adminNotificationError: nullableStr(row,"admin_notification_error"),
     gmailMessageId: nullableStr(row, "gmail_message_id"),
     gmailThreadId: nullableStr(row, "gmail_thread_id"),
     updatedAt: str(row, "updated_at") || str(row, "created_at"),
@@ -615,7 +516,8 @@ function mapReply(row: Row): ReplyRecord {
     fromEmail: str(row, "from_email"),
     subject: str(row, "subject"),
     body: str(row, "reply_text") || str(row, "body"),
-    classification: (str(row, "reply_intent") || str(row, "classification") || "unclear") as ReplyRecord["classification"],
+    requestedAction: requestedReplyAction(str(row,"reply_text")||str(row,"body"),str(row,"reply_intent")||str(row,"classification")),
+    classification: normalizeReplyClassification(str(row,"reply_intent")||str(row,"classification")),
     confidence: rawConfidence > 1 ? rawConfidence / 100 : rawConfidence,
     requiresHumanReview: bool(row, "human_review_required", bool(row, "requires_human_review")),
     handled: bool(row, "handled"),
@@ -708,54 +610,33 @@ export class SupabaseAdapter implements LeadRepository {
   private async rows(
     table: string,
     build?: (query: FilterBuilder) => FilterBuilder,
+    pageAll = !build,
   ): Promise<Row[]> {
-    const query = this.client.from(table).select("*") as unknown as FilterBuilder;
-    const { data, error } = (await (build ? build(query) : query)) as {
-      data: Row[] | null;
-      error: { message: string } | null;
-    };
-    if (error) throw new Error(`Supabase query on "${table}" failed: ${error.message}`);
-    return data ?? [];
+    const result:Row[]=[];
+    do {
+      const query = this.client.from(table).select("*",pageAll?{count:"exact"}:{}) as unknown as FilterBuilder;
+      const filtered=build?build(query):query.order(table===TABLES.requests?"job_id":"id",{ascending:true});
+      const {data,error,count}=await (pageAll?filtered.range(result.length,result.length+999):filtered) as {data:Row[]|null;error:{message:string}|null;count?:number|null};
+      if(error)throw new Error(`Supabase query on "${table}" failed: ${error.message}`);
+      result.push(...(data||[]));
+      if(!pageAll||!data?.length||(count!=null?result.length>=count:data.length<1000))return result;
+    }while(true);
   }
 
   async getOverview(): Promise<DashboardOverview> {
-    const [snapshot] = await this.rows(TABLES.dashboardLatest, (query) => query.limit(1));
-    if (!snapshot) {
-      throw new Error(
-        "No dashboard snapshot is available. Run the Final Dashboard & Reporting workflow once.",
-      );
-    }
-
-    const metrics = rowObject(snapshot["metrics"]);
-    const pipeline: PipelineStageSummary[] = rowArray(snapshot, "pipeline").map((stage) => ({
-      stage: str(stage, "stage"),
-      count: num(stage, "count"),
-    }));
-    const outreachSummary: PipelineStageSummary[] = rowArray(snapshot, "outreach_summary").map(
-      (stage) => ({
-        stage: str(stage, "stage"),
-        count: num(stage, "count"),
-      }),
-    );
-    const recentJobs = rowArray(snapshot, "recent_jobs");
-    const reviewItems = rowArray(snapshot, "review_items");
-
-    return {
-      metrics: {
-        totalLeadsFound: num(metrics, "totalLeadsFound"),
-        verifiedLeads: num(metrics, "verifiedLeads"),
-        highPotentialLeads: num(metrics, "highPotentialLeads"),
-        pendingApproval: num(metrics, "pendingApproval"),
-        emailsSent: num(metrics, "emailsSent"),
-        repliesReceived: num(metrics, "repliesReceived"),
-        meetingsBooked: num(metrics, "meetingsBooked"),
-      },
-      recentRequests: recentJobs.map(mapDashboardRequest),
-      pipeline,
-      recentActivity: recentJobs.map(mapDashboardJobActivity).slice(0, 8),
-      outreachSummary,
-      itemsNeedingReview: reviewItems.map(mapDashboardReviewActivity).slice(0, 5),
-    };
+    const [summary, requests, activity, issues] = await Promise.all([
+      this.client.rpc("codenativex_dashboard_live_summary"),
+      this.rows(TABLES.requests,q=>q.order("requested_at",{ascending:false}).limit(6)),
+      this.listActivity(8),
+      this.client.from(TABLES.leads).select("id,company_name,updated_at,last_outreach_error,audit_error_message")
+        .is("dashboard_deleted_at",null).or("audit_status.in.(audit_failed,audit_needs_review),outreach_status.in.(failed,blocked),last_outreach_error.not.is.null")
+        .order("updated_at",{ascending:false}).limit(5),
+    ]);
+    if(summary.error)throw new Error(`Live overview unavailable: ${summary.error.message}. Apply the dashboard operations migration; no snapshot/sample fallback was used.`);
+    if(issues.error)throw new Error(issues.error.message);
+    const data=summary.data as Omit<DashboardOverview,"recentRequests"|"itemsNeedingReview">;
+    return {...data,mode:"live",recentRequests:requests.map(mapRequest),recentActivity:activity,
+      itemsNeedingReview:(issues.data||[]).map(row=>({id:`issue-${row.id}`,leadId:row.id,requestId:null,actor:"system" as const,action:"current_issue",severity:"warning" as const,message:`${row.company_name}: ${row.last_outreach_error||row.audit_error_message||"Needs review"}`,createdAt:row.updated_at}))};
   }
 
   async listRequests(): Promise<LeadSearchRequest[]> {
@@ -919,10 +800,10 @@ export class SupabaseAdapter implements LeadRepository {
 
   async listLeads(query: LeadQuery): Promise<Paginated<Lead> & { facets: LeadFacets }> {
     const candidateRows = await this.rows(TABLES.candidates, (candidateQuery) => {
-      let scoped = candidateQuery.limit(5000).order("dashboard_action_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
+      let scoped = candidateQuery.order("dashboard_action_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
       if (query.requestId) scoped = scoped.eq("job_id", query.requestId);
       return scoped;
-    });
+    },true);
 
     const candidateLeadKeys = [...new Set(candidateRows.map((row) => str(row, "lead_key")).filter(Boolean))];
     const pipelineRows: Row[] = [];
@@ -932,7 +813,7 @@ export class SupabaseAdapter implements LeadRepository {
     }
     if (!query.requestId) {
       const legacyRows = await this.rows(TABLES.leads, (leadQuery) =>
-        leadQuery.limit(5000).order("dashboard_action_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
+        leadQuery.order("dashboard_action_at", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),true,
       );
       const knownIds = new Set(pipelineRows.map((row) => str(row, "id")));
       pipelineRows.push(...legacyRows.filter((row) => !knownIds.has(str(row, "id"))));
@@ -1076,7 +957,7 @@ export class SupabaseAdapter implements LeadRepository {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (!auditError && auditData) audit = mapAudit(auditData as Row);
+    if (!auditError && auditData && lead.auditStatus !== "website_missing") audit = mapAudit(auditData as Row);
     return {
       ...lead,
       audit,
@@ -1200,6 +1081,7 @@ export class SupabaseAdapter implements LeadRepository {
       .filter((row) => !nullableStr(row, "dashboard_deleted_at"))
       .filter((row) => num(row, "duplicate_count") === 0)
       .filter((row) => !str(row, "gmail_message_id"))
+      .filter((row) => !str(row, "first_outreach_at") && str(row, "outreach_status") !== "sending")
       .map((row) => str(row, "id")))];
     if (eligibleIds.length === 0) return [];
     const preparedAt = new Date().toISOString();
@@ -1220,6 +1102,12 @@ export class SupabaseAdapter implements LeadRepository {
         updated_at: new Date().toISOString(),
       })
       .in("id", eligibleIds)
+      .is("gmail_message_id", null)
+      .is("first_outreach_at", null)
+      .neq("outreach_status", "sending")
+      .eq("approval_status", "approved")
+      .eq("do_not_contact", false)
+      .is("dashboard_deleted_at", null)
       .select("*");
     if (error) throw new Error(`Could not queue leads for outreach: ${error.message}`);
     return (data as Row[]).map(mapOutreach);
@@ -1261,10 +1149,12 @@ export class SupabaseAdapter implements LeadRepository {
     if (!record.messages.some((message) => message.id === messageId)) {
       throw new BackendNotConnectedError(`outreach/${outreachId}/messages/${messageId}`);
     }
-    if (!(bool(sourceRow,"outreach_include_concept") && str(sourceRow,"visual_concept_path")) && (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url"))) {
+    const developmentMode=str(sourceRow,"outreach_kind")==="website_development" && websiteMissing(sourceRow.website) && str(sourceRow,"audit_status")==="website_missing";
+    if(developmentMode && developmentOutreachBlock(sourceRow))throw new Error(developmentOutreachBlock(sourceRow)||"Development outreach is blocked.");
+    if (!developmentMode && !(bool(sourceRow,"outreach_include_concept") && str(sourceRow,"visual_concept_path")) && (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url"))) {
       throw new Error("This email cannot be approved until a verified audit and PDF report are complete.");
     }
-    if (bool(sourceRow, "do_not_contact") || num(sourceRow, "duplicate_count") > 0 || str(sourceRow, "gmail_message_id")) {
+    if (bool(sourceRow, "do_not_contact") || num(sourceRow, "duplicate_count") > 0 || str(sourceRow, "gmail_message_id") || str(sourceRow,"first_outreach_at") || str(sourceRow,"outreach_send_key") || str(sourceRow,"outreach_status")==="sending" || str(sourceRow,"dashboard_deleted_at")) {
       throw new Error("This outreach is blocked by contact safety or duplicate-send protection.");
     }
 
@@ -1272,12 +1162,14 @@ export class SupabaseAdapter implements LeadRepository {
       .from(TABLES.outreach)
       .update({
         human_review_required: false,
+        last_outreach_error:null,
         outreach_status: "queued",
         status: "outreach_queued",
         next_action: "send_personalized_email",
         next_workflow: "03 - Personalized Evidence-Based Email Outreach",
         email_preview_status: "approved",
         outreach_approved_at: new Date().toISOString(),
+        dashboard_retry_key:null,dashboard_retry_at:null,
         updated_at: new Date().toISOString(),
         approved_by: this.userEmail,
       })
@@ -1329,7 +1221,14 @@ export class SupabaseAdapter implements LeadRepository {
       this.rows(TABLES.meetings),
       this.rows("codenativex_calendly_bookings"),
     ]);
-    const rows = [...legacyRows, ...calendlyRows];
+    const unique=new Map<string,Row>();
+    for(const row of [...legacyRows,...calendlyRows]){
+      const key=str(row,"event_uri")||str(row,"calendar_event_id")||str(row,"meeting_processing_id")||str(row,"id");
+      const previous=unique.get(key);
+      const at=(r:Row)=>Date.parse(str(r,"updated_at")||str(r,"source_event_at")||str(r,"created_at"))||0;
+      if(!previous||at(row)>at(previous)||at(row)===at(previous)&&str(row,"meeting_status")==="cancelled")unique.set(key,row);
+    }
+    const rows=[...unique.values()];
     const leadIds = [...new Set(rows.map((row) => str(row, "lead_id")).filter(Boolean))];
     const leadRows = leadIds.length
       ? await this.rows(TABLES.leads, (query) => query.in("id", leadIds))
@@ -1364,7 +1263,7 @@ export class SupabaseAdapter implements LeadRepository {
   }
 
   async listActivity(limit = 100): Promise<ActivityEvent[]> {
-    const rows = await this.rows(TABLES.activity, (query) =>
+    const rows = await this.rows("codenativex_dashboard_activity", (query) =>
       query.order("created_at", { ascending: false }).limit(limit),
     );
     return rows.map(mapActivity);
