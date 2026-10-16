@@ -214,8 +214,8 @@ export function OutreachClient() {
                     plainText={message.body}
                     title={`${preview.companyName} email preview`}
                   />
-                  {preview.outreachIncludeConcept && message.step === "initial" && message.status !== "sent" ? (
-                    <EmailConceptAttachment leadId={preview.leadId} version={preview.visualConceptJobId} available={Boolean(preview.visualConceptReady)} />
+                  {preview.outreachIncludeConcept && message.step === "initial" ? (
+                    <EmailConceptAttachment leadId={preview.leadId} version={preview.visualConceptJobId} available={Boolean(preview.visualConceptReady)} sent={message.status === "sent"} />
                   ) : null}
                   {message.sentAt ? (
                     <p className="mt-2 text-[11px] text-[var(--app-text-subtle)]">
