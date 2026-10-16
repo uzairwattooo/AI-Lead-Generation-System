@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { apiError, handleRouteError, requireSession } from "@/server/api";
+import { prepareWebsiteDevelopment } from "@/server/outreach/prepare-website-development";
+import { websiteMissing } from "@/server/outreach/website-development";
 import { dispatchToN8n } from "@/server/n8n";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 
@@ -12,12 +14,16 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     const admin = createSupabaseAdminClient();
     const { data: lead, error: readError } = await admin
       .from("lead_pipeline")
-      .select("id, audit_status, audit_report_url, gmail_message_id")
+      .select("id, website, audit_status, audit_report_url, gmail_message_id")
       .eq("id", id)
       .maybeSingle();
     if (readError) throw new Error(`Could not load the lead: ${readError.message}`);
     if (!lead) return apiError("Lead not found.", 404);
     if (lead.gmail_message_id) return apiError("A sent email cannot be regenerated.", 409);
+    if (websiteMissing(lead.website)) {
+      const result=await prepareWebsiteDevelopment(id);
+      return NextResponse.json({queued:false,dispatch:{dispatched:true,detail:result.blockReason||"Website development email regenerated. Review and approve it before sending."}});
+    }
     if (lead.audit_status !== "audit_completed" || !lead.audit_report_url) {
       return apiError("A completed evidence-based audit and PDF are required first.", 409);
     }

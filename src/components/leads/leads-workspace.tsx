@@ -669,7 +669,7 @@ export function LeadsWorkspace({
                           ) : column.key === "audit" ? (
                             <span className="flex flex-wrap items-center gap-1">
                               <Badge tone={lead.auditStatus === "audit_completed" ? "success" : lead.auditStatus === "audit_failed" ? "danger" : lead.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
-                                {lead.auditStatus.replace(/_/g, " ")}
+                                {lead.auditStatus === "website_missing" ? "Website missing" : lead.auditStatus.replace(/_/g, " ")}
                               </Badge>
                               {lead.auditScore !== null ? <span className="text-xs tabular-nums">{lead.auditScore}</span> : null}
                             </span>
@@ -803,7 +803,7 @@ export function LeadsWorkspace({
           <DialogHeader>
             <DialogTitle>Prepare approved leads for outreach?</DialogTitle>
             <DialogDescription>
-              The agent will audit the website and prepare a professional email draft. No email is sent until
+              The agent prepares an audit-based draft for existing websites, or a website development email when no website is saved. No email is sent until
               you approve the final message.
             </DialogDescription>
           </DialogHeader>

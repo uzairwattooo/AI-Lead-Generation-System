@@ -14,13 +14,21 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return apiError("The outreach result is invalid.", 422, parsed.error.issues);
     if (parsed.data.outcome === "sent" && (!parsed.data.gmailMessageId || !parsed.data.gmailThreadId)) return apiError("Gmail message and thread IDs are required for a successful send.", 422);
+    const admin = createSupabaseAdminClient();
+    const {data:lead,error:leadError}=await admin.from("lead_pipeline").select("outreach_kind").eq("id",parsed.data.leadId).eq("outreach_send_key",parsed.data.sendKey).maybeSingle();
+    if(leadError)throw new Error(leadError.message);
+    if(!lead)return apiError("Outreach result was stale or already recorded.",409);
     const now = new Date();
     const update = parsed.data.outcome === "sent" ? {
       admin_notification_status: "pending", admin_notification_error: null, outreach_attempts: 1, follow_up_count: 0, status: "awaiting_reply", outreach_status: "sent", gmail_message_id: parsed.data.gmailMessageId, gmail_thread_id: parsed.data.gmailThreadId, first_outreach_at: now.toISOString(), last_outreach_at: now.toISOString(), next_follow_up_at: new Date(now.getTime() + 2 * 86_400_000).toISOString(), next_action: "monitor_reply", next_workflow: "04 - Reply Monitoring & Follow-Up", human_review_required: false, email_preview_status: "sent", last_outreach_error: null, updated_at: now.toISOString(),
     } : {
       status: "outreach_failed", outreach_status: "failed", next_action: "manual_review", next_workflow: null, human_review_required: true, last_outreach_error: parsed.data.error ?? "gmail_send_failed", updated_at: now.toISOString(),
     };
-    const admin = createSupabaseAdminClient();
+    // The existing 04 sequence describes technical audit fixes. Never enroll a
+    // website-development email in that sequence. IMAP reply monitoring remains active.
+    if(parsed.data.outcome === "sent" && lead.outreach_kind === "website_development") {
+      Object.assign(update,{next_follow_up_at:null,next_workflow:null});
+    }
     let query = admin.from("lead_pipeline").update(update).eq("id", parsed.data.leadId).eq("outreach_send_key", parsed.data.sendKey);
     if (parsed.data.outcome === "sent") query = query.is("gmail_message_id", null);
     const { data, error } = await query.select("id").maybeSingle();

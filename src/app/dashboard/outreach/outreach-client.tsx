@@ -136,7 +136,7 @@ export function OutreachClient() {
                     <TableCell>
                       <span className="flex flex-wrap items-center gap-1">
                         <Badge tone={record.auditStatus === "audit_completed" ? "success" : record.auditStatus === "audit_failed" ? "danger" : record.auditStatus === "audit_needs_review" ? "warning" : "neutral"}>
-                          {record.auditStatus.replace(/_/g, " ")}
+                          {record.auditStatus === "website_missing" ? "Website missing" : record.auditStatus.replace(/_/g, " ")}
                         </Badge>
                         {record.auditScore !== null ? <span className="text-xs tabular-nums">{record.auditScore}</span> : null}
                       </span>
@@ -236,7 +236,13 @@ export function OutreachClient() {
                 <Button variant="secondary" loading={regenerateEmail.isPending} onClick={() => regenerateEmail.mutate()}><RefreshCw aria-hidden />Regenerate</Button>
                 <Button
                   loading={approveMessage.isPending}
-                  disabled={!preview.auditReportAvailable || preview.auditStatus !== "audit_completed"}
+                  disabled={
+                    !preview.email || Boolean(preview.gmailMessageId) || !(
+                      preview.auditStatus === "website_missing" ||
+                      (preview.auditStatus === "audit_completed" && preview.auditReportAvailable) ||
+                      (preview.outreachIncludeConcept && preview.visualConceptReady)
+                    )
+                  }
                   onClick={() =>
                     approveMessage.mutate(
                       { outreachId: preview.id, messageId: pendingMessage.id },

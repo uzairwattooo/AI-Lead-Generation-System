@@ -1,3 +1,4 @@
+import { websiteMissing,developmentOutreachBlock } from "@/server/outreach/website-development";
 /**
  * Live adapter backed by Supabase Postgres.
  *
@@ -85,7 +86,7 @@ function strArray(row: Row, key: string): string[] {
 
 function auditStatus(value: string): Lead["auditStatus"] {
   const normalized = value.toLowerCase();
-  if (normalized === "audit_pending" || normalized === "audit_processing" || normalized === "audit_completed" || normalized === "audit_failed" || normalized === "audit_needs_review") return normalized;
+  if (normalized === "audit_pending" || normalized === "audit_processing" || normalized === "audit_completed" || normalized === "audit_failed" || normalized === "audit_needs_review" || normalized === "website_missing") return normalized;
   return "not_started";
 }
 
@@ -1076,7 +1077,7 @@ export class SupabaseAdapter implements LeadRepository {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (!auditError && auditData) audit = mapAudit(auditData as Row);
+    if (!auditError && auditData && lead.auditStatus !== "website_missing") audit = mapAudit(auditData as Row);
     return {
       ...lead,
       audit,
@@ -1200,6 +1201,7 @@ export class SupabaseAdapter implements LeadRepository {
       .filter((row) => !nullableStr(row, "dashboard_deleted_at"))
       .filter((row) => num(row, "duplicate_count") === 0)
       .filter((row) => !str(row, "gmail_message_id"))
+      .filter((row) => !str(row, "first_outreach_at") && str(row, "outreach_status") !== "sending")
       .map((row) => str(row, "id")))];
     if (eligibleIds.length === 0) return [];
     const preparedAt = new Date().toISOString();
@@ -1220,6 +1222,12 @@ export class SupabaseAdapter implements LeadRepository {
         updated_at: new Date().toISOString(),
       })
       .in("id", eligibleIds)
+      .is("gmail_message_id", null)
+      .is("first_outreach_at", null)
+      .neq("outreach_status", "sending")
+      .eq("approval_status", "approved")
+      .eq("do_not_contact", false)
+      .is("dashboard_deleted_at", null)
       .select("*");
     if (error) throw new Error(`Could not queue leads for outreach: ${error.message}`);
     return (data as Row[]).map(mapOutreach);
@@ -1261,7 +1269,9 @@ export class SupabaseAdapter implements LeadRepository {
     if (!record.messages.some((message) => message.id === messageId)) {
       throw new BackendNotConnectedError(`outreach/${outreachId}/messages/${messageId}`);
     }
-    if (!(bool(sourceRow,"outreach_include_concept") && str(sourceRow,"visual_concept_path")) && (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url"))) {
+    const developmentMode=str(sourceRow,"outreach_kind")==="website_development" && websiteMissing(sourceRow.website) && str(sourceRow,"audit_status")==="website_missing";
+    if(developmentMode && developmentOutreachBlock(sourceRow))throw new Error(developmentOutreachBlock(sourceRow)||"Development outreach is blocked.");
+    if (!developmentMode && !(bool(sourceRow,"outreach_include_concept") && str(sourceRow,"visual_concept_path")) && (str(sourceRow, "audit_status") !== "audit_completed" || !str(sourceRow, "audit_report_url"))) {
       throw new Error("This email cannot be approved until a verified audit and PDF report are complete.");
     }
     if (bool(sourceRow, "do_not_contact") || num(sourceRow, "duplicate_count") > 0 || str(sourceRow, "gmail_message_id")) {

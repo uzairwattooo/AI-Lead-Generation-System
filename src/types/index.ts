@@ -104,6 +104,7 @@ export const AUDIT_STATUSES = [
   "audit_completed",
   "audit_failed",
   "audit_needs_review",
+  "website_missing",
 ] as const;
 export type AuditStatus = (typeof AUDIT_STATUSES)[number];
 

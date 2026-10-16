@@ -175,7 +175,7 @@ export function useSendToOutreach() {
     mutationFn: (input: { leadIds: string[]; options: OutreachPreparationOptions }) =>
       leadService.sendToOutreach(input.leadIds, input.options),
     onSuccess: (result) => {
-      toast.success(`${result.queued} lead${result.queued === 1 ? "" : "s"} queued for audit`, {
+      toast.success(`${result.queued} lead${result.queued === 1 ? "" : "s"} prepared for outreach`, {
         description: result.detail,
       });
       invalidate();
@@ -190,7 +190,7 @@ export function useRegenerateAudit(leadId: string) {
   return useMutation({
     mutationFn: () => leadService.regenerateAudit(leadId),
     onSuccess: (result) => {
-      toast.success("Fresh website audit queued", { description: result.dispatch.detail });
+      toast.success(result.queued ? "Website audit queued" : "Website status updated", { description: result.dispatch.detail });
       invalidate();
       void queryClient.invalidateQueries({ queryKey: queryKeys.lead(leadId) });
     },
@@ -204,7 +204,7 @@ export function useRegenerateEmail(leadId: string) {
   return useMutation({
     mutationFn: () => leadService.regenerateEmail(leadId),
     onSuccess: (result) => {
-      toast.success("Email draft regeneration queued", { description: result.dispatch.detail });
+      toast.success(result.queued ? "Email draft regeneration queued" : "Email preparation complete", { description: result.dispatch.detail });
       invalidate();
       void queryClient.invalidateQueries({ queryKey: queryKeys.lead(leadId) });
     },

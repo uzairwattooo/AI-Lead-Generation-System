@@ -11,6 +11,7 @@ import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { serverEnv } from "@/server/env";
 import { conceptEmail,usableEmail } from "@/server/lead-tools/policy";
 import { renderProfessionalEmail } from "@/server/outreach/email-template";
+import { websiteMissing,websiteDevelopmentEmail,developmentOutreachBlock } from "@/server/outreach/website-development";
 import type { AuditFinding } from "@/types";
 
 const schema = z.object({ leadId: z.string().uuid(), mode: z.enum(["draft_only", "send_approved"]) });
@@ -43,11 +44,19 @@ export async function POST(request: Request) {
       approvalStatus: lead.approval_status ?? "",
       gmailMessageId: lead.gmail_message_id,
     });
+    const developmentMode = lead.outreach_kind === "website_development" && lead.audit_status === "website_missing" && websiteMissing(lead.website);
+    if(developmentMode){
+      const block=developmentOutreachBlock(lead);if(block)return apiError(block,409);
+      const {data:latestWebsite,error:websiteError}=await admin.from("lead_discovery_candidates").select("website,resolved_website").eq("lead_key",lead.lead_key).order("updated_at",{ascending:false}).limit(1).maybeSingle();
+      if(websiteError)throw new Error(websiteError.message);
+      if(!websiteMissing(latestWebsite?.website)||!websiteMissing(latestWebsite?.resolved_website))return apiError("A website was found after this draft. Regenerate the audit before sending.",409);
+    }
     const visualMode = lead.outreach_include_concept === true && Boolean(lead.visual_concept_path && lead.visual_concept_job_id);
     if (visualMode && (lead.approval_status !== "approved" || lead.do_not_contact || lead.dashboard_deleted_at || lead.gmail_message_id || Number(lead.duplicate_count || 0) > 0 || !usableEmail(lead.email || ""))) return apiError("Concept email is blocked by approval/contact safety.",409);
-    if (!visualMode && (!decision.allowed || !lead.audit_report_url)) return apiError(decision.reason ?? "Audit report is unavailable.", 409, { code: decision.code });
+    if (!visualMode && !developmentMode && (!decision.allowed || !lead.audit_report_url)) return apiError(decision.reason ?? "Audit report is unavailable.", 409, { code: decision.code });
 
     const contactFirstName = lead.contact_name && lead.decision_maker_status === "verified" ? (String(lead.contact_name).trim().split(/\s+/)[0] ?? null) : null;
+    if (parsed.data.mode === "draft_only" && developmentMode) return apiError("Use dashboard Regenerate email to prepare the website development draft; no technical audit or AI generation is needed.",409);
     if (parsed.data.mode === "draft_only" && visualMode) return apiError("Use Prepare concept email after reviewing the generated image.",409);
     if (parsed.data.mode === "draft_only") {
       return NextResponse.json({
@@ -64,6 +73,11 @@ export async function POST(request: Request) {
       return apiError("The evidence-based email draft has not been approved.", 409);
     }
     const draftErrors = validateEvidenceDraft({ subject: lead.outreach_subject, body: String(lead.outreach_plain_text_body || lead.outreach_body || "").split(/\n\nBest regards,/i)[0] || "", findingCodes: findings.slice(0, 2).map((finding) => finding.code), verifiedFindings: findings });
+    if (developmentMode) {
+      const copy=websiteDevelopmentEmail(lead.company_name,lead.city,contactFirstName);
+      const rendered=renderProfessionalEmail({companyName:lead.company_name,body:copy.body,findings:[]});
+      if(lead.outreach_subject!==copy.subject||lead.outreach_plain_text_body!==rendered.plainText||lead.outreach_html_body!==rendered.html)return apiError("Regenerate and approve the website development email before sending.",409);
+    }
     if (visualMode) {
       const copy = conceptEmail(lead.company_name,contactFirstName);
       const expected = renderProfessionalEmail({companyName:lead.company_name,body:copy.body,findings:[]});
@@ -73,7 +87,7 @@ export async function POST(request: Request) {
       if(!job || job.status!=="completed" || job.target.website!==lead.website) return apiError("Concept does not match the current website; regenerate it.",409);
     }
     // Old approved drafts may still contain the attachment/booking language. Require a fresh preview.
-    if (!visualMode && draftErrors.some((message) => /First-touch|unresolved|unapproved/.test(message))) return apiError("Regenerate and approve the new first-touch email before sending.", 409);
+    if (!visualMode && !developmentMode && draftErrors.some((message) => /First-touch|unresolved|unapproved/.test(message))) return apiError("Regenerate and approve the new first-touch email before sending.", 409);
     const sendKey = randomUUID();
     const { data: claimed, error: claimError } = await admin.from("lead_pipeline").update({ outreach_status: "sending", outreach_send_key: sendKey, updated_at: new Date().toISOString() }).eq("id", lead.id).eq("email_preview_status", "approved").is("gmail_message_id", null).eq("approval_status","approved").eq("do_not_contact",false).is("dashboard_deleted_at",null).neq("outreach_status", "sending").select("id").maybeSingle();
     if (claimError) throw new Error(`Could not claim outreach send: ${claimError.message}`);
@@ -88,6 +102,7 @@ export async function POST(request: Request) {
       subject: lead.outreach_subject,
       html: lead.outreach_html_body,
       plainText: lead.outreach_plain_text_body,
+      outreachKind: developmentMode ? "website_development" : "website_audit",
       includeConcept: visualMode,
       conceptJobId: visualMode ? lead.visual_concept_job_id : null,
       adminNotificationEmail: serverEnv.adminNotificationEmail,
