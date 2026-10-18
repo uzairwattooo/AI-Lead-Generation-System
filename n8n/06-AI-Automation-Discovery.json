@@ -1,0 +1,90 @@
+{
+  "name": "06 - AI Automation Opportunity Discovery",
+  "nodes": [
+    {
+      "id": "61220ef9-4212-47b8-85a3-ad6bb7a4d95d",
+      "name": "Every 2 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c9f11e0a-8b6c-430e-bce8-a24559d4299d",
+      "name": "Run one discovery job",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "7cdb3c23-ddb6-4d47-b008-21c42b0c855f",
+      "name": "Process next discovery job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL.replace(/\\/$/, '') + '/api/internal/automation/discover' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 240000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 minutes": {
+      "main": [
+        [
+          {
+            "node": "Process next discovery job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run one discovery job": {
+      "main": [
+        [
+          {
+            "node": "Process next discovery job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

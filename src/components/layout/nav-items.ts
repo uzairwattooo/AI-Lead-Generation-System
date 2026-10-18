@@ -1,5 +1,6 @@
 import {
   Activity,
+  Bot,
   CalendarCheck,
   CheckSquare,
   Archive,
@@ -36,33 +37,100 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Discovery",
     items: [
-      { href: "/dashboard", label: "Overview", icon: LayoutDashboard, description: "Pipeline summary and agent health" },
-      { href: "/dashboard/generate", label: "Generate Leads", icon: Search, description: "Start a new Opportunity Hunter run" },
-      { href: "/dashboard/requests", label: "Lead Requests", icon: ListChecks, description: "Search history and live progress" },
+      {
+        href: "/dashboard",
+        label: "Overview",
+        icon: LayoutDashboard,
+        description: "Pipeline summary and agent health",
+      },
+      {
+        href: "/dashboard/generate",
+        label: "Generate Leads",
+        icon: Search,
+        description: "Start a new Opportunity Hunter run",
+      },
+      {
+        href: "/dashboard/automation",
+        label: "AI Opportunities",
+        icon: Bot,
+        description:
+          "Businesses for AI assistants, public requests and agent-service outreach",
+      },
+      {
+        href: "/dashboard/requests",
+        label: "Lead Requests",
+        icon: ListChecks,
+        description: "Search history and live progress",
+      },
     ],
   },
   {
     label: "Qualification",
     items: [
-      { href: "/dashboard/leads", label: "New Leads", icon: Users, description: "New businesses awaiting your review" },
-      { href: "/dashboard/approved", label: "Approved Leads", icon: BadgeCheck, description: "Reviewed leads ready for outreach" },
-      { href: "/dashboard/rejected", label: "Rejected Leads", icon: Archive, description: "Archived review decisions" },
-      { href: "/dashboard/approvals", label: "Approval Queue", icon: CheckSquare, description: "Approve leads before outreach" },
+      {
+        href: "/dashboard/leads",
+        label: "New Leads",
+        icon: Users,
+        description: "New businesses awaiting your review",
+      },
+      {
+        href: "/dashboard/approved",
+        label: "Approved Leads",
+        icon: BadgeCheck,
+        description: "Reviewed leads ready for outreach",
+      },
+      {
+        href: "/dashboard/rejected",
+        label: "Rejected Leads",
+        icon: Archive,
+        description: "Archived review decisions",
+      },
+      {
+        href: "/dashboard/approvals",
+        label: "Approval Queue",
+        icon: CheckSquare,
+        description: "Approve leads before outreach",
+      },
     ],
   },
   {
     label: "Engagement",
     items: [
-      { href: "/dashboard/outreach", label: "Outreach", icon: Mail, description: "Email sequences and follow-ups" },
-      { href: "/dashboard/replies", label: "Replies", icon: MessageSquare, description: "Classified replies and calling queue" },
-      { href: "/dashboard/meetings", label: "Meetings", icon: CalendarCheck, description: "Requested and booked meetings" },
+      {
+        href: "/dashboard/outreach",
+        label: "Outreach",
+        icon: Mail,
+        description: "Email sequences and follow-ups",
+      },
+      {
+        href: "/dashboard/replies",
+        label: "Replies",
+        icon: MessageSquare,
+        description: "Classified replies and calling queue",
+      },
+      {
+        href: "/dashboard/meetings",
+        label: "Meetings",
+        icon: CalendarCheck,
+        description: "Requested and booked meetings",
+      },
     ],
   },
   {
     label: "Workspace",
     items: [
-      { href: "/dashboard/activity", label: "Activity Logs", icon: Activity, description: "Full agent event history" },
-      { href: "/dashboard/settings", label: "Settings", icon: Settings, description: "Approval policy and outreach limits" },
+      {
+        href: "/dashboard/activity",
+        label: "Activity Logs",
+        icon: Activity,
+        description: "Full agent event history",
+      },
+      {
+        href: "/dashboard/settings",
+        label: "Settings",
+        icon: Settings,
+        description: "Approval policy and outreach limits",
+      },
     ],
   },
 ];
@@ -83,4 +151,5 @@ export const SEGMENT_LABELS: Record<string, string> = {
   meetings: "Meetings",
   activity: "Activity Logs",
   settings: "Settings",
+  automation: "AI Automation Opportunities",
 };
