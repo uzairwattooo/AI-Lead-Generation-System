@@ -1,0 +1,100 @@
+{
+  "name": "08 - AI Automation Reply Monitoring",
+  "nodes": [
+    {
+      "id": "be2fca6c-8388-46e6-9e70-51c0ddf510ac",
+      "name": "Automation reply inbox",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "postProcessAction": "nothing",
+        "options": {
+          "customEmailConfig": "[\"ALL\"]",
+          "forceReconnect": 60,
+          "trackLastMessageId": true
+        }
+      },
+      "credentials": {
+        "imap": {
+          "id": "8q0XU9Ula29jYrGB",
+          "name": "CodeNativeX Hostinger IMAP"
+        }
+      }
+    },
+    {
+      "id": "a2176d62-8d21-4ecb-a908-0e2d5e598fa8",
+      "name": "Normalize business reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const m=$json;const headers={};if(Array.isArray(m.headers))for(const h of m.headers)headers[String(h.name||'').toLowerCase()]=h.value;else for(const [k,v]of Object.entries(m.headers||{}))headers[k.toLowerCase()]=v;\nconst rawFrom=m.from?.value?.[0]?.address||m.from?.text||m.from||headers.from||'';const sender=(String(rawFrom).match(/<?([A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\\.[A-Z]{2,})>?/i)||[])[1];const messageId=m.messageId||m.messageID||headers['message-id'];const html=String(m.textHtml||m.html||m.textAsHtml||'').replace(/<blockquote[\\s\\S]*?<\\/blockquote>/gi,'').replace(/<(script|style)\\b[\\s\\S]*?<\\/\\1>/gi,'').replace(/<br\\s*\\/?\\s*>|<\\/(?:p|div)>/gi,'\\n').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&');const body=m.textPlain||m.text||html||'';if(!sender||!messageId||!String(body).trim())return [];\nconst references=String(headers['in-reply-to']||m.inReplyTo||headers.references||m.references||'').match(/<[^>]+>/g)||[];const received=new Date(m.date||m.receivedDate||Date.now());if(!Number.isFinite(received.getTime()))return [];\nreturn [{json:{messageId:String(messageId).slice(0,500),sender:sender.toLowerCase(),body:String(body).slice(0,12000),receivedAt:received.toISOString(),references:references.slice(0,30)}}];"
+      }
+    },
+    {
+      "id": "3a799272-2c60-4a50-9ad7-67f3e85198a4",
+      "name": "Record and route automation reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL.replace(/\\/$/, '') + '/api/internal/automation/reply' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 240000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Automation reply inbox": {
+      "main": [
+        [
+          {
+            "node": "Normalize business reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize business reply": {
+      "main": [
+        [
+          {
+            "node": "Record and route automation reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+

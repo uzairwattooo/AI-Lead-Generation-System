@@ -1,11 +1,13 @@
 "use client";
 
+import { AutomationDiscoveryForm } from "@/components/discovery/automation-discovery-form";
+import { LocationFields } from "@/components/discovery/location-fields";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { BriefcaseBusiness, Building2, CheckCircle2, MapPin, Rocket, Search, Users } from "lucide-react";
+import { Bot, BriefcaseBusiness, Building2, CheckCircle2, MapPin, Rocket, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -23,10 +25,8 @@ import {
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BUSINESS_CATEGORIES, COUNTRIES, DISCOVERY_SOURCE_RULES } from "@/lib/constants";
+import { BUSINESS_CATEGORIES, DISCOVERY_SOURCE_RULES } from "@/lib/constants";
 import type { DiscoverySourceValue } from "@/lib/constants";
-import { getCities, getRegions } from "@/lib/locations";
 import { leadSearchCriteriaSchema, type LeadSearchCriteriaOutput } from "@/lib/schemas";
 import { errorMessage } from "@/hooks/use-lead-data";
 import { leadService } from "@/services/lead-service";
@@ -56,8 +56,9 @@ const SOURCE_OPTIONS = [
   { value: "job_platform_public_search", label: "Client projects", sourceLabel: "Job platforms", icon: BriefcaseBusiness },
   { value: "agency_collaboration_public_search", label: "Agency partners", sourceLabel: "Agency listings", icon: Users },
   { value: "google_intent_public_search", label: "Buying intent", sourceLabel: "Google search", icon: Search },
+  { value: "ai_opportunities", label: "AI Opportunities", sourceLabel: "AI agent services", icon: Bot },
 ] as const satisfies ReadonlyArray<{
-  value: DiscoverySourceValue;
+  value: DiscoverySourceValue | "ai_opportunities";
   label: string;
   sourceLabel: string;
   icon: typeof MapPin;
@@ -65,6 +66,7 @@ const SOURCE_OPTIONS = [
 
 export function GenerateLeadsForm() {
   const router = useRouter();
+  const [isAutomation, setIsAutomation] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [pendingValues, setPendingValues] = React.useState<LeadSearchCriteria | null>(null);
   const {
@@ -81,8 +83,6 @@ export function GenerateLeadsForm() {
   });
 
   const values = useWatch({ control, defaultValue: DEFAULT_VALUES }) as LeadSearchCriteriaOutput;
-  const regionOptions = getRegions(values.country);
-  const cityOptions = getCities(values.country, values.region);
   const isAgency = values.source === "agency_collaboration_public_search";
   const categoryOptions = isAgency
     ? ["Digital Agencies", "Marketing Agencies", "Design Agencies", "Web Development Agencies", "SEO Agencies", "Creative Agencies"]
@@ -124,7 +124,7 @@ export function GenerateLeadsForm() {
         description="Choose a source, target area and lead count. Every discovered business will be kept for human review."
       />
 
-      <form onSubmit={onSubmit} noValidate className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
           <Card>
             <CardHeader>
@@ -148,11 +148,13 @@ export function GenerateLeadsForm() {
                               className="peer sr-only"
                               name={field.name}
                               value={option.value}
-                              checked={field.value === option.value}
+                              checked={option.value === "ai_opportunities" ? isAutomation : !isAutomation && field.value === option.value}
                               ref={index === 0 ? field.ref : undefined}
                               onBlur={field.onBlur}
                               disabled={mutation.isPending}
                               onChange={() => {
+                                if (option.value === "ai_opportunities") { setIsAutomation(true); return; }
+                                setIsAutomation(false);
                                 const rules = DISCOVERY_SOURCE_RULES[option.value];
                                 field.onChange(option.value);
                                 clearErrors();
@@ -170,7 +172,7 @@ export function GenerateLeadsForm() {
                                 <span className="mt-1 block text-xs text-[var(--app-text-muted)]">{option.sourceLabel}</span>
                               </span>
                             </span>
-                            {field.value === option.value ? <CheckCircle2 className="absolute right-2 top-2 size-4 text-teal-500" aria-hidden /> : null}
+                            {(option.value === "ai_opportunities" ? isAutomation : !isAutomation && field.value === option.value) ? <CheckCircle2 className="absolute right-2 top-2 size-4 text-teal-500" aria-hidden /> : null}
                           </label>
                         );
                       })}
@@ -182,6 +184,7 @@ export function GenerateLeadsForm() {
             </CardContent>
           </Card>
 
+          {isAutomation ? <Card><CardHeader><CardTitle>Discover AI opportunities</CardTitle><CardDescription>Search a category or explore all businesses in your selected area.</CardDescription></CardHeader><CardContent><AutomationDiscoveryForm /></CardContent></Card> : <form onSubmit={onSubmit} noValidate className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>2. Select the target area</CardTitle>
@@ -207,51 +210,12 @@ export function GenerateLeadsForm() {
                 />
               </Field>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Field id="country" label="Country" error={errors.country?.message}>
-                  <Controller
-                    control={control}
-                    name="country"
-                    render={({ field }) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={(next) => {
-                          field.onChange(next);
-                          setValue("region", "", { shouldDirty: true });
-                          setValue("city", "", { shouldDirty: true });
-                        }}
-                      >
-                        <SelectTrigger id="country"><SelectValue placeholder="Select country" /></SelectTrigger>
-                        <SelectContent>
-                          {COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </Field>
-
-                <Field id="region" label="State / Region" error={errors.region?.message}>
-                  {regionOptions.length ? (
-                    <Controller
-                      control={control}
-                      name="region"
-                      render={({ field }) => (
-                        <Select value={field.value} onValueChange={(next) => { field.onChange(next); setValue("city", "", { shouldDirty: true }); }}>
-                          <SelectTrigger id="region"><SelectValue placeholder="Select state" /></SelectTrigger>
-                          <SelectContent>
-                            {regionOptions.map((region) => <SelectItem key={region} value={region}>{region}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  ) : <Input id="region" placeholder="State or region" {...register("region")} />}
-                </Field>
-
-                <Field id="city" label="City / Area" error={errors.city?.message}>
-                  <Input id="city" list={cityOptions.length ? "city-options" : undefined} placeholder="City or area" {...register("city")} />
-                  {cityOptions.length ? <datalist id="city-options">{cityOptions.map((city) => <option key={city} value={city} />)}</datalist> : null}
-                </Field>
-              </div>
+              <LocationFields value={{ country: values.country, region: values.region, city: values.city }} onChange={location => {
+                setValue("country", location.country, { shouldDirty: true });
+                setValue("region", location.region, { shouldDirty: true });
+                setValue("city", location.city, { shouldDirty: true });
+              }} />
+              {errors.country || errors.region || errors.city ? <p role="alert" className="text-xs text-red-400">{errors.country?.message || errors.region?.message || errors.city?.message}</p> : null}
             </CardContent>
           </Card>
 
@@ -271,9 +235,10 @@ export function GenerateLeadsForm() {
             <Rocket aria-hidden /> Generate Leads
           </Button>
           <p className="text-xs text-[var(--app-text-muted)]">Discovery never sends email. Outreach begins only after your human review and approval.</p>
+          </form>}
         </div>
 
-        <div className="xl:col-span-1">
+        {!isAutomation ? <div className="xl:col-span-1">
           <Card className="xl:sticky xl:top-20">
             <CardHeader>
               <CardTitle>Your search</CardTitle>
@@ -293,8 +258,8 @@ export function GenerateLeadsForm() {
               </div>
             </CardContent>
           </Card>
-        </div>
-      </form>
+        </div> : null}
+      </div>
 
       <Dialog open={confirmOpen} onOpenChange={(open) => { if (!mutation.isPending) setConfirmOpen(open); }}>
         <DialogContent>
@@ -321,3 +286,4 @@ export function GenerateLeadsForm() {
     </>
   );
 }
+

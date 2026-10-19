@@ -1,0 +1,410 @@
+{
+  "name": "07 - Approved AI Agent Email Outreach",
+  "nodes": [
+    {
+      "id": "8eb80b3e-2174-46c1-821b-227a41296d6a",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bb2675d8-f21e-4b03-be3b-b8658c769a35",
+      "name": "Run one approved email",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "17684ff8-6668-4c54-a376-c5e7f42c88e2",
+      "name": "Claim approved email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL.replace(/\\/$/, '') + '/api/internal/automation/next-email' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 240000
+        }
+      }
+    },
+    {
+      "id": "ebdf3a39-a3f3-4e6e-bddf-2fe9db0bb604",
+      "name": "Expand claimed email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return ($json.items || []).map(json=>({json}));"
+      }
+    },
+    {
+      "id": "233701e3-1ee1-432c-9094-0cb0ef243934",
+      "name": "Authorize SMTP once",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL.replace(/\\/$/, '') + '/api/internal/automation/authorize-email' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 240000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({id:$json.id,sendKey:$json.send_key}) }}"
+      }
+    },
+    {
+      "id": "3e74fce8-1324-4c5a-8dad-521f86ee5448",
+      "name": "Restore authorized email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const claim=$('Expand claimed email').all(0,$runIndex)[$itemIndex]?.json;if(!$json.authorized||!claim)throw new Error('SMTP permission not confirmed');return [{json:claim}];"
+      }
+    },
+    {
+      "id": "26e27d77-1503-4070-8dff-7ee3b40c1aa9",
+      "name": "Send approved agent email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        0
+      ],
+      "parameters": {
+        "fromEmail": "={{ $env.CODENATIVEX_SMTP_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $env.CODENATIVEX_SMTP_FROM_EMAIL }}"
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "LGrFIuoiFiu5dsFF",
+          "name": "CodeNativeX Hostinger SMTP"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "38a93aa5-a1a6-4856-8afd-40988b93137f",
+      "name": "Build SMTP result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const claim=$('Expand claimed email').all(0,$runIndex)[$itemIndex]?.json; if(!claim)throw new Error('Missing send claim');const receipt=$json;const accepted=typeof receipt.messageId==='string'&&receipt.messageId.length>0&&Array.isArray(receipt.accepted)&&receipt.accepted.some(x=>String(x).toLowerCase()===claim.email.toLowerCase())&&!receipt.error;return [{json:{id:claim.id,sendKey:claim.send_key,accepted,messageId:accepted?receipt.messageId:undefined,error:accepted?undefined:'SMTP outcome could not be confirmed. Check SMTP execution before retrying.'}}];"
+      }
+    },
+    {
+      "id": "2303214c-296e-440f-a515-f653f40b72c8",
+      "name": "Record send result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL.replace(/\\/$/, '') + '/api/internal/automation/send-result' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 240000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      }
+    },
+    {
+      "id": "5cc03855-8831-4d56-9f3b-fef051cda0de",
+      "name": "Prepare admin notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        0
+      ],
+      "parameters": {
+        "jsCode": "if(!$json.sent||!$json.notificationEmail)return [];const claim=$('Expand claimed email').first().json;return [{json:{...claim,notificationEmail:$json.notificationEmail}}];"
+      }
+    },
+    {
+      "id": "0a9b1cd2-6dc8-4b36-a476-dad4ded53459",
+      "name": "Email admin notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "fromEmail": "={{ $env.CODENATIVEX_SMTP_FROM_EMAIL }}",
+        "toEmail": "={{ $json.notificationEmail }}",
+        "subject": "={{ \"AI agent outreach sent: \" + $json.email }}",
+        "emailFormat": "text",
+        "text": "={{ \"An approved AI automation email was accepted by SMTP.\\nRecipient: \" + $json.email + \"\\nSubject: \" + $json.subject + \"\\nReview the AI Opportunities dashboard for status and replies.\" }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "LGrFIuoiFiu5dsFF",
+          "name": "CodeNativeX Hostinger SMTP"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "5fc5d467-c3b6-4f32-9835-b2f3f6384ea5",
+      "name": "Build notification result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const claim=$('Prepare admin notification').first().json;const receipt=$json;const sent=typeof receipt.messageId==='string'&&receipt.messageId.length>0&&Array.isArray(receipt.accepted)&&receipt.accepted.some(x=>String(x).toLowerCase()===claim.notificationEmail.toLowerCase())&&!receipt.error;return [{json:{id:claim.id,sendKey:claim.send_key,sent,error:sent?undefined:'Admin notification SMTP receipt was not confirmed.'}}];"
+      }
+    },
+    {
+      "id": "28306147-83ab-4c22-857f-1aea53642604",
+      "name": "Record admin notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CODENATIVEX_DASHBOARD_URL.replace(/\\/$/, '') + '/api/internal/automation/notification-result' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-codenativex-intake-key",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 240000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Claim approved email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run one approved email": {
+      "main": [
+        [
+          {
+            "node": "Claim approved email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim approved email": {
+      "main": [
+        [
+          {
+            "node": "Expand claimed email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand claimed email": {
+      "main": [
+        [
+          {
+            "node": "Authorize SMTP once",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize SMTP once": {
+      "main": [
+        [
+          {
+            "node": "Restore authorized email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore authorized email": {
+      "main": [
+        [
+          {
+            "node": "Send approved agent email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send approved agent email": {
+      "main": [
+        [
+          {
+            "node": "Build SMTP result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SMTP result": {
+      "main": [
+        [
+          {
+            "node": "Record send result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record send result": {
+      "main": [
+        [
+          {
+            "node": "Prepare admin notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare admin notification": {
+      "main": [
+        [
+          {
+            "node": "Email admin notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email admin notification": {
+      "main": [
+        [
+          {
+            "node": "Build notification result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build notification result": {
+      "main": [
+        [
+          {
+            "node": "Record admin notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+
