@@ -4,6 +4,7 @@ export const searchSchema = z
     category: z.string().trim().min(2).max(100),
     city: z.string().trim().min(2).max(100),
     country: z.string().trim().min(2).max(100),
+    region: z.string().trim().max(100).default(""),
     kind: z.enum(["business", "buyer_request"]).default("business"),
     limit: z.number().int().min(1).max(10).default(5),
   })
@@ -127,7 +128,7 @@ export function initialDraft(
     : "your connected business inboxes";
   return {
     subject: `An AI assistant for ${name}`.slice(0, 150),
-    body: `${greeting}\n\nWe build AI assistants that help businesses manage ${offer} from one professional dashboard.\n\nYour assistant could reply through ${channel}, qualify new leads, follow up and help arrange appointments, with your team staying in control. Where supported, it can also flag relevant public buying requests in your target area for review.\n\nWould you be open to a short call to see what would be useful for your business?\n\nBest regards,\nCode Nativex\ncodenativex.com\n\nIf this is not relevant, reply "not interested" and we will not follow up.`,
+    body: `${greeting}\n\nWe build AI assistants to help manage ${offer}, with a professional dashboard so your team can stay in control.\n\nYour assistant could reply through ${channel}, qualify new leads, follow up and help arrange appointments, with your team staying in control. We can build or connect your website too. Where supported, your assistant can flag relevant public buying requests for review.\n\nWould you be open to a short call to see what would be useful for your business?\n\nBest regards,\nCode Nativex\ncodenativex.com\n\nIf this is not relevant, reply "not interested" and we will not follow up.`,
   };
 }
 export function replyIntent(text: string): "stop" | "interested" | "review" {
@@ -155,3 +156,4 @@ export function safeError(error: unknown) {
     .replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]")
     .slice(0, 600);
 }
+

@@ -75,6 +75,7 @@ export async function POST(request: Request) {
           category: body.input.category,
           city: body.input.city,
           country: body.input.country,
+          region: body.input.region,
           kind: body.input.kind,
           requested_count: body.input.limit,
           created_by: auth.email,
@@ -120,3 +121,4 @@ export async function POST(request: Request) {
     return handleRouteError(e);
   }
 }
+

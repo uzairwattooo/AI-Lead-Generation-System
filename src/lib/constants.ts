@@ -23,6 +23,20 @@ export const BUSINESS_CATEGORIES = [
   "Design Agencies",
   "SaaS Companies",
   "E-Commerce Businesses",
+  "Dental Clinics",
+  "Medical Clinics",
+  "Property Management Companies",
+  "Travel Agencies",
+  "Recruitment Agencies",
+  "Insurance Agencies",
+  "Car Dealerships",
+  "Auto Repair Shops",
+  "Gyms and Fitness Studios",
+  "Home Services",
+  "Law Firms",
+  "Accounting Firms",
+  "Education and Training Centres",
+  "Logistics Companies",
 ] as const;
 
 export const SERVICES = [
@@ -274,3 +288,4 @@ export const TERMINAL_REQUEST_STATUSES: readonly LeadRequestStatus[] = [
   "failed",
   "cancelled",
 ];
+

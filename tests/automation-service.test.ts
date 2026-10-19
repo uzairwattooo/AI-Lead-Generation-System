@@ -330,3 +330,30 @@ test("losing the one-time SMTP permission stops execution", async (t) => {
     /already consumed/,
   );
 });
+
+test("discovery passes state and selected category to search without sending email", async (t) => {
+  const service = await servicePromise;
+  const oldKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-only-do-not-use";
+  t.after(() => { if (oldKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = oldKey; });
+  let searches = 0;
+  t.mock.method(globalThis, "fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("api.openai.com")) {
+      searches++;
+      const request = JSON.parse(String(init?.body));
+      const criteria = JSON.parse(request.input);
+      assert.equal(criteria.region, "Florida");
+      assert.equal(criteria.city, "Miami");
+      assert.equal(criteria.category, "Dental Clinics");
+      assert.match(request.instructions, /state\/region/);
+      return Response.json({ output: [{ type: "message", content: [{ type: "output_text", text: '{"businesses":[]}' }] }] });
+    }
+    if (url.includes("automation_claim_job")) return Response.json([{ id, category: "Dental Clinics", region: "Florida", city: "Miami", country: "United States", kind: "business", requested_count: 5 }]);
+    assert.ok(!url.includes("automation_outbox"), "discovery must not queue or send emails");
+    return Response.json([]);
+  });
+  const result = await service.runDiscovery();
+  assert.equal(result.processed, true);
+  assert.equal(searches, 1);
+});

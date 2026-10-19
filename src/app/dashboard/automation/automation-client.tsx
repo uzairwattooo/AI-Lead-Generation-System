@@ -1,7 +1,8 @@
 "use client";
+import { AutomationDiscoveryForm } from "@/components/discovery/automation-discovery-form";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, ExternalLink, RefreshCw, Search } from "lucide-react";
+import { Bot, ExternalLink, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,8 @@ type Job = {
   id: string;
   category: string;
   city: string;
+  region?: string;
+  country?: string;
   kind: string;
   status: string;
   result_count: number;
@@ -63,20 +66,6 @@ export default function AutomationClient() {
         .toLowerCase()
         .includes(filter.toLowerCase()),
   );
-  const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const f = new FormData(event.currentTarget);
-    action.mutate({
-      action: "search",
-      input: {
-        category: f.get("category"),
-        city: f.get("city"),
-        country: f.get("country"),
-        kind: f.get("kind"),
-        limit: Number(f.get("limit")),
-      },
-    });
-  };
   const submitImport = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const f = new FormData(event.currentTarget);
@@ -124,78 +113,7 @@ export default function AutomationClient() {
       </header>
       <section className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
         <h2 className="mb-3 font-semibold">Discover opportunities</h2>
-        <form
-          onSubmit={submitSearch}
-          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6"
-        >
-          <label className="text-xs lg:col-span-2">
-            Business category or buying requirement
-            <input
-              className={inputClass}
-              name="category"
-              defaultValue="Real estate agencies"
-              minLength={2}
-              maxLength={100}
-              required
-            />
-          </label>
-          <label className="text-xs">
-            City
-            <input
-              className={inputClass}
-              name="city"
-              placeholder="Miami"
-              required
-              minLength={2}
-              maxLength={100}
-            />
-          </label>
-          <label className="text-xs">
-            Country
-            <input
-              className={inputClass}
-              name="country"
-              defaultValue="United States"
-              required
-              minLength={2}
-              maxLength={100}
-            />
-          </label>
-          <label className="text-xs">
-            Search type
-            <select className={inputClass} name="kind">
-              <option value="business">Businesses for AI agents</option>
-              <option value="buyer_request">Public buying requests</option>
-            </select>
-          </label>
-          <label className="text-xs">
-            Results, up to 10
-            <input
-              className={inputClass}
-              name="limit"
-              type="number"
-              min={1}
-              max={10}
-              defaultValue={5}
-              required
-            />
-          </label>
-          <div className="sm:col-span-2 lg:col-span-6">
-            <Button
-              type="submit"
-              loading={action.isPending}
-              disabled={query.isError}
-            >
-              <Search className="size-4" />
-              Start discovery
-            </Button>
-          </div>
-        </form>
-        <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-          Search uses public web results and consumes OpenAI credits. City
-          matching is not precise radius tracking. Private groups and social
-          inboxes are not searched. New jobs need workflow 06 active.
-        </p>
+        <AutomationDiscoveryForm />
       </section>
       {query.isError ? (
         <div role="alert" className="rounded-lg border border-amber-500 p-4">
@@ -499,7 +417,7 @@ export default function AutomationClient() {
               className="mt-3 border-t border-[var(--app-border)] pt-3 text-sm"
             >
               <strong>
-                {j.category} · {j.city}
+                {j.category} · {[j.city, j.region, j.country].filter(Boolean).join(", ")}
               </strong>
               <p className="text-xs">
                 {j.kind.replaceAll("_", " ")} · {j.status} · {j.result_count}{" "}
@@ -634,3 +552,4 @@ export default function AutomationClient() {
     </div>
   );
 }
+
