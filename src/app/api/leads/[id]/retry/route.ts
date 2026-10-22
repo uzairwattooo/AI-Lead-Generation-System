@@ -3,6 +3,7 @@ import {z} from "zod";
 import {apiError,handleRouteError,requireSession} from "@/server/api";
 import {isDemoMode} from "@/server/env";
 import {createSupabaseAdminClient} from "@/server/supabase-admin";
+import {claimFollowUpRetry} from "@/server/operations/follow-up-retry";
 import {retryOptions} from "@/server/operations/policy";
 import {dispatchApprovedOutreach} from "@/server/operations/outreach-dispatch";
 import {claimOutreachRetry} from "@/server/operations/outreach-retry";
@@ -15,12 +16,17 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
  const auth=await requireSession();if(!auth.ok)return auth.response;
  if(isDemoMode())return apiError("Live retries are unavailable in demo mode.",409);
  try{
-  const input=z.object({kind:z.enum(["audit","email_draft","outreach","contacts","concept"])}).strict().safeParse(await request.json());if(!input.success)return apiError("Choose a valid retry action.",422);
+  const input=z.object({kind:z.enum(["audit","email_draft","outreach","contacts","concept","follow_up"])}).strict().safeParse(await request.json());if(!input.success)return apiError("Choose a valid retry action.",422);
   const {id}=await context.params;const admin=createSupabaseAdminClient();
   const {data:lead,error}=await admin.from("lead_pipeline").select("*").eq("id",id).maybeSingle();if(error)throw new Error(error.message);
   if(!lead&&input.data.kind==="contacts")return tool(new Request(request.url,{method:"POST",headers:request.headers,body:JSON.stringify({kind:"contacts"})}),context);
   if(!lead)return apiError("Prepare this lead for outreach first.",409);
   const option=retryOptions(lead).find(x=>x.kind===input.data.kind)!;if(!option.allowed)return apiError(option.reason||"Retry blocked.",409);
+  if(input.data.kind==="follow_up"){
+   const result=await claimFollowUpRetry(lead,admin);
+   if(!result)return apiError("Lead changed or another retry started. Refresh before retrying.",409);
+   return NextResponse.json({...result,detail:"Only the failed follow-up generation was queued for workflow 04. It becomes due in one minute and is processed on the next workflow cycle. The initial email and send receipts were preserved."});
+  }
   if(input.data.kind==="audit")return audit(request,context);
   if(input.data.kind==="email_draft")return lead.outreach_include_concept&&lead.visual_concept_path?conceptDraft(request,context):draft(request,context);
   if(input.data.kind==="concept"||input.data.kind==="contacts")return tool(new Request(request.url,{method:"POST",headers:request.headers,body:JSON.stringify({kind:input.data.kind})}),context);
@@ -29,3 +35,4 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   return NextResponse.json({queued:true,dispatch,detail:"Approved email dispatched. Sending remains guarded against duplicates."});
  }catch(e){return handleRouteError(e);}
 }
+
