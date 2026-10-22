@@ -400,6 +400,19 @@ export function LeadsWorkspace({
 
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Outreach status</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={outreach.includes("approved_not_prepared")}
+                    onCheckedChange={() => {
+                      setOutreach((current) => current.includes("approved_not_prepared")
+                        ? current.filter((item) => item !== "approved_not_prepared")
+                        : [...current, "approved_not_prepared"]);
+                      setSelected([]);
+                      setPage(1);
+                    }}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Approved · Not prepared
+                  </DropdownMenuCheckboxItem>
                   <div className="max-h-48 overflow-y-auto">
                     {OUTREACH_OPTIONS.map((status) => (
                       <DropdownMenuCheckboxItem
@@ -857,3 +870,4 @@ export function LeadsWorkspace({
     </>
   );
 }
+
