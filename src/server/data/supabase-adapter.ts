@@ -1,3 +1,4 @@
+import { matchesLeadOutreachFilter } from "@/lib/leads/outreach-filter";
 import { websiteMissing,developmentOutreachBlock } from "@/server/outreach/website-development";
 /**
  * Live adapter backed by Supabase Postgres.
@@ -861,7 +862,7 @@ export class SupabaseAdapter implements LeadRepository {
       if (lead.dashboardDeletedAt) return false;
       if (query.categories?.length && !query.categories.includes(lead.category)) return false;
       if (query.verification?.length && !query.verification.includes(lead.verificationStatus)) return false;
-      if (query.outreach?.length && !query.outreach.includes(lead.outreachStatus)) return false;
+      if (!matchesLeadOutreachFilter(lead, query.outreach)) return false;
       if (query.approval?.length && !query.approval.includes(lead.approvalStatus)) return false;
       if (query.recommendedOnly && !lead.isRecommended) return false;
       if (contactFilters.has("has_email") && !lead.email) return false;
@@ -1066,7 +1067,12 @@ export class SupabaseAdapter implements LeadRepository {
         p_prepare_report: options.prepareAuditReport,
         p_enable_booking: options.enableBookingLink,
       });
-      if (error) throw new Error(`Could not prepare discovered lead for outreach: ${error.message}. Run the human-review migration first.`);
+      if (error) {
+        const missingPromotion = error.code === "PGRST202" || error.code === "42883";
+        throw new Error(missingPromotion
+          ? "The discovery promotion function is missing. Apply the human-review and safe-promotion migrations."
+          : `Could not prepare discovered lead for outreach: ${error.message}`);
+      }
       if (typeof data === "string") promotedIds.push(data);
     }
 
@@ -1081,7 +1087,9 @@ export class SupabaseAdapter implements LeadRepository {
       .filter((row) => !nullableStr(row, "dashboard_deleted_at"))
       .filter((row) => num(row, "duplicate_count") === 0)
       .filter((row) => !str(row, "gmail_message_id"))
-      .filter((row) => !str(row, "first_outreach_at") && str(row, "outreach_status") !== "sending")
+      .filter((row) => !str(row, "first_outreach_at") && !str(row, "outreach_send_key") && !/^(sent|sending|initial_email_sent|awaiting_reply|follow_up)/i.test(str(row, "outreach_status")))
+      .filter((row) => !["pending_generation", "awaiting_approval", "approved", "sent"].includes(str(row, "email_preview_status")))
+      .filter((row) => str(row, "audit_status") !== "audit_processing")
       .map((row) => str(row, "id")))];
     if (eligibleIds.length === 0) return [];
     const preparedAt = new Date().toISOString();
@@ -1104,6 +1112,7 @@ export class SupabaseAdapter implements LeadRepository {
       .in("id", eligibleIds)
       .is("gmail_message_id", null)
       .is("first_outreach_at", null)
+      .is("outreach_send_key", null)
       .neq("outreach_status", "sending")
       .eq("approval_status", "approved")
       .eq("do_not_contact", false)
@@ -1310,3 +1319,4 @@ export class SupabaseAdapter implements LeadRepository {
     return settings;
   }
 }
+

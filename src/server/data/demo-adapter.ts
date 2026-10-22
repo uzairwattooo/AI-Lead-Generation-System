@@ -1,3 +1,4 @@
+import { matchesLeadOutreachFilter } from "@/lib/leads/outreach-filter";
 /**
  * Demo adapter for the LeadRepository contract.
  *
@@ -352,7 +353,7 @@ export class DemoAdapter implements LeadRepository {
       if (query.requestId && lead.requestId !== query.requestId) return false;
       if (!matchesFilter(query.categories, lead.category)) return false;
       if (!matchesFilter(query.verification, lead.verificationStatus)) return false;
-      if (!matchesFilter(query.outreach, lead.outreachStatus)) return false;
+      if (!matchesLeadOutreachFilter(lead, query.outreach)) return false;
       if (!matchesFilter(query.approval, lead.approvalStatus)) return false;
       if (query.recommendedOnly && !lead.isRecommended) return false;
       if (query.contact?.includes("has_email") && !lead.email) return false;
@@ -579,3 +580,4 @@ export class DemoAdapter implements LeadRepository {
     return { ...store.settings };
   }
 }
+
