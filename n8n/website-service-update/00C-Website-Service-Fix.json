@@ -1,0 +1,3373 @@
+{
+  "name": "00C - Website Verification Worker - Evidence Fix Oct14",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "1ecc791c-cdde-4dba-99c9-5afe71766c0f",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        9920,
+        3104
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "cd8d3401-eabf-4c1e-877a-9e7211649ac0",
+      "name": "Manual Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        9920,
+        3232
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "orderBy": "created_at",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "pending"
+            }
+          ]
+        }
+      },
+      "id": "83e66dcc-bd11-41f2-952b-d4b70800a1e3",
+      "name": "Get Pending Website Candidates",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10176,
+        2960
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = Date.now();\nconst allowedIntakeStatuses = new Set([\n  'awaiting_website_verification',\n  'website_verification_pending',\n  'website_verification_retry_pending',\n  'manual_review_required'\n]);\nconst rows = $input.all()\n  .map((item) => item.json || {})\n  .filter((row) => {\n    const intakeStatus = String(row.intake_status || '').trim().toLowerCase();\n    return row && row.id && !row.error && !row.dashboard_deleted_at && row.do_not_contact !== true && row.review_status !== 'rejected' &&\n      (intakeStatus !== 'manual_review_required' || row.review_status === 'pending') && allowedIntakeStatuses.has(intakeStatus);\n  });\nconst selected = rows.find((row) => {\n  const attempts = Number(row.website_verification_attempts || 0);\n  const maxAttempts = Math.max(1, Number(row.website_verification_max_attempts || 3));\n  if (attempts >= maxAttempts) return false;\n  if (!row.website_verification_next_attempt_at) return true;\n  const due = new Date(row.website_verification_next_attempt_at).getTime();\n  return Number.isFinite(due) && due <= now;\n});\nif (!selected) return [{ json: { candidate_selected: false } }];\nreturn [{ json: { ...selected, candidate_selected: true } }];"
+      },
+      "id": "a7a0d58b-a221-46de-8605-d24a39831138",
+      "name": "Select Due Candidate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10416,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000009",
+              "leftValue": "={{ $json.candidate_selected === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "29df0750-e1f2-493d-bf0c-5f0ef2c4b1e1",
+      "name": "Candidate Due?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        10656,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nconst clean = (value, max = 1000) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);\nconst normalizeUrl = (value) => {\n  let raw = clean(value, 2000);\n  if (!raw) return { url: '', domain: '' };\n  raw = raw.replace(/\\s+/g, '');\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = candidate.match(/^https?:\\/\\/(?:[^@\\/\\s]+@)?([^\\/?#:\\s]+)(?::\\d+)?(?:[\\/?#]|$)/i);\n  if (!match) return { url: '', domain: '' };\n  const domain = String(match[1] || '').toLowerCase().replace(/^www\\./, '').replace(/\\.$/, '');\n  if (!/^[a-z0-9.-]+\\.[a-z]{2,}$/i.test(domain)) return { url: '', domain: '' };\n  return { url: candidate.split('#')[0], domain };\n};\nconst blocked = [...['att.net','gmail.com','outlook.com','hotmail.com','live.com','yahoo.com','yahoo.net','currently.att.yahoo.com'],\n  'google.com','googleusercontent.com','g.page','yelp.com','facebook.com','instagram.com',\n  'linkedin.com','youtube.com','x.com','twitter.com','tiktok.com','yellowpages.com',\n  'mapquest.com','healthgrades.com','zocdoc.com','vitals.com','doximity.com',\n  'bbb.org','chamberofcommerce.com','opencorporates.com','crunchbase.com',\n  'tripadvisor.com','angi.com','thumbtack.com','nextdoor.com','waze.com','snapfinance.com','tintingnearme.com','miamigoeslocal.com','nears.me','manta.com','bizapedia.com','cylex.us.com','alignable.com','merchantcircle.com','local.yahoo.com','foursquare.com','superpages.com','hotfrog.com','brownbook.net','showmelocal.com','whereorg.com','dentalplans.com','wheree.com','zoominfo.com','webmd.com','doctor.com','carecredit.com','birdeye.com','trustpilot.com','npidb.org','npino.com','npi-lookup.org','npi-lookup.com','npiprofile.com','nppes.cms.hhs.gov','npi.wiki','doximity.com','medicare.gov','yandex.com','point2homes.com','denteldoc.com','wellness.com','dentists.com'\n];\nconst isBlocked = (domain) => blocked.some((entry) => domain === entry || domain.endsWith('.' + entry));\n// No URL global dependency: compatible with n8n Code-node sandboxes.\nconst normalizeWebsite = (value) => {\n  if (Array.isArray(value)) {\n    for (const item of value) { const result = normalizeWebsite(item); if (result.website) return result; }\n    return { website: '', domain: '' };\n  }\n  if (value && typeof value === 'object') return normalizeWebsite(value.url || value.uri || value.website || value.value || '');\n  let raw = String(value ?? '').trim().replace(/&amp;/gi, '&');\n  if (!raw || /[\\s\\\\<>\"'`]/.test(raw)) return { website: '', domain: '' };\n  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\\/\\//i.test(raw)) return { website: '', domain: '' };\n  if (raw.startsWith('//')) raw = 'https:' + raw;\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = candidate.match(/^(https?):\\/\\/([^/?#:]+)(?::(\\d{1,5}))?([/?#].*)?$/i);\n  if (!match || match[2].includes('@')) return { website: '', domain: '' };\n  const host = match[2].toLowerCase().replace(/\\.$/, '');\n  if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/i.test(host)) return { website: '', domain: '' };\n  if (match[3] && !['80', '443'].includes(match[3])) return { website: '', domain: '' };\n  const domain = host.replace(/^www\\./, '');\n  const blockedSites = ['google.com', 'google.co.uk', 'maps.app.goo.gl', 'goo.gl', 'g.page', 'googleusercontent.com', 'facebook.com', 'fb.com', 'instagram.com', 'linkedin.com', 'yelp.com', 'youtube.com', 'tiktok.com', 'twitter.com', 'x.com', 'yellowpages.com', 'mapquest.com', 'tripadvisor.com', 'bbb.org', 'chamberofcommerce.com', 'manta.com', 'angi.com', 'thumbtack.com', 'healthgrades.com', 'zocdoc.com', 'webmd.com', 'gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com'];\n  if (blockedSites.some(site => domain === site || domain.endsWith('.' + site))) return { website: '', domain: '' };\n  let suffix = (match[4] || '/').split('#')[0] || '/';\n  if (suffix.startsWith('?')) suffix = '/' + suffix;\n  return { website: match[1].toLowerCase() + '://' + host + (match[3] ? ':' + match[3] : '') + suffix, domain };\n};\nconst websiteFromPlace = row => {\n  for (const value of [row.website, row.websiteUri, row.websiteUrl, row.website_url, row.webSite, row.websites, row.websiteDetails]) {\n    const result = normalizeWebsite(value);\n    if (result.website) return result;\n  }\n  return { website: '', domain: '' };\n};\nconst routeWebsiteService = (requested, website) => {\n  const service = String(requested || 'Website Redesign').trim();\n  const websiteServices = ['Website Redesign', 'New Website', 'Web Development', 'SEO Improvement', 'Performance Optimization'];\n  if (!websiteServices.includes(service)) return service;\n  if (!website) return 'New Website';\n  return ['New Website', 'Web Development'].includes(service) ? 'Website Redesign' : service;\n};\n\nconst savedPlace = websiteFromPlace(row);\nconst rawPlace = websiteFromPlace(row.raw_payload || {});\nconst existingSite = [row.resolved_website, savedPlace.website, rawPlace.website, row.raw_payload?.source_website].map(normalizeWebsite).find(site => site.website);\nconst existing = normalizeUrl(existingSite?.website || '');\nconst email = clean(row.email, 320).toLowerCase();\nconst emailDomainRaw = email.includes('@') ? email.split('@').pop() : '';\nconst emailDomain = normalizeUrl(emailDomainRaw).domain;\nconst freeEmail = [\n  'gmail.com','yahoo.com','outlook.com','hotmail.com','icloud.com','aol.com',\n  'proton.me','protonmail.com','live.com','msn.com','mail.com','gmx.com'\n];\nlet candidateUrl = '';\nlet candidateDomain = '';\nlet resolutionSource = '';\nlet initialConfidence = 0;\n// Email domains are search hints, not proof of an official business website.\nconst priorEvidence = row.website_identity_evidence || {};\nconst priorSource = String(row.website_resolution_source || priorEvidence.source || '');\nconst failedEmailFallback = existing.domain && existing.domain === emailDomain &&\n  !row.website && (priorSource === 'business_email_domain' ||\n    (Number(row.website_verification_attempts || 0) > 0 &&\n      !priorSource.startsWith('google_search')));\nif (existing.url && !isBlocked(existing.domain) && !failedEmailFallback) {\n  candidateUrl = existing.url;\n  candidateDomain = existing.domain;\n  resolutionSource = priorSource || 'existing_business_record';\n  initialConfidence = Number(priorEvidence.pre_probe_confidence ??\n    row.website_identity_confidence ?? 35);\n  if (!Number.isFinite(initialConfidence)) initialConfidence = 35;\n  initialConfidence = Math.max(0, Math.min(100, initialConfidence));\n}\nconst companyQuery = clean(row.company_name, 220)\n  .replace(/[^a-z0-9&' -]+/gi, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\nconst region = clean(row.raw_payload?.state || row.country, 80);\nconst terms = [\n  companyQuery ? '\"' + companyQuery + '\"' : '',\n  clean(row.city, 80),\n  region,\n  'official website'\n].filter(Boolean);\nlet query = terms.join(' ');\nconst words = query.split(/\\s+/).filter(Boolean);\nif (words.length > 32) query = words.slice(0, 32).join(' ');\nconst countryText = clean(row.country, 80).toLowerCase();\nconst countryMap = {\n  'united states':'us','usa':'us','united kingdom':'gb','uk':'gb','canada':'ca',\n  'australia':'au','germany':'de','france':'fr','spain':'es','italy':'it',\n  'united arab emirates':'ae','uae':'ae','pakistan':'pk','india':'in'\n};\nconst countryCode = countryMap[countryText] || 'us';\nconst attemptsNext = Number(row.website_verification_attempts || 0) + 1;\nreturn [{\n  json: {\n    ...row,\n    human_review_only: row.raw_payload?.human_review_only === true || row.intake_status === 'manual_review_required',\n    candidate_url: candidateUrl,\n    candidate_domain: candidateDomain,\n    resolution_source: resolutionSource,\n    initial_confidence: initialConfidence,\n    preserved_identity_evidence: priorEvidence,\n    search_query: query,\n    attempts_next: attemptsNext,\n    worker_id: '00C-' + $execution.id,\n    apify_input: {\n      queries: query,\n      maxPagesPerQuery: 1,\n      countryCode,\n      searchLanguage: clean(row.language || 'en', 10).toLowerCase() || 'en',\n      languageCode: clean(row.language || 'en', 10).toLowerCase() || 'en',\n      forceExactMatch: false,\n      mobileResults: false,\n      includeUnfilteredResults: false,\n      saveHtml: false,\n      saveHtmlToKeyValueStore: false,\n      includeIcons: false,\n      focusOnPaidAds: false,\n      maximumLeadsEnrichmentRecords: 0,\n      aiOverview: { scrapeFullAiOverview: false },\n      aiModeSearch: { enableAiMode: false },\n      geminiSearch: { enableGemini: false },\n      perplexitySearch: { enablePerplexity: false },\n      chatGptSearch: { enableChatGpt: false },\n      websiteContentScraper: { enable: false }\n    }\n  }\n}];"
+      },
+      "id": "3a103f43-7bfa-4e28-b3ac-702f08b5e6f2",
+      "name": "Prepare Verification Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10896,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "pending"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "={{ $json.intake_status }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "resolving"
+            },
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "website_verification_processing"
+            },
+            {
+              "fieldId": "website_verification_attempts",
+              "fieldValue": "={{ $json.attempts_next }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ $json.worker_id }}"
+            },
+            {
+              "fieldId": "website_verification_next_attempt_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_error_code",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_error",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "raw_payload",
+              "fieldValue": "={{ { ...($json.raw_payload || {}), human_review_only: $json.human_review_only === true } }}"
+            }
+          ]
+        }
+      },
+      "id": "03f64210-006c-4a1e-9913-a67a5d6418e7",
+      "name": "Claim Website Candidate",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        11152,
+        2960
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $('Prepare Verification Claim').first().json;\nconst response = $json || {};\nconst claimed = Boolean(response.id && response.id === prepared.id && response.website_verification_status === 'resolving');\nreturn [{\n  json: {\n    ...prepared,\n    ...(response.id ? response : {}),\n    claim_succeeded: claimed\n  }\n}];"
+      },
+      "id": "de9f6b23-5ab1-4679-a1b1-505cde975aab",
+      "name": "Resolve Verification Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11408,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000014",
+              "leftValue": "={{ $json.claim_succeeded }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7192848c-e7ef-4f83-b345-5395b19d97c4",
+      "name": "Claim Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11648,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000016",
+              "leftValue": "={{ Boolean($json.candidate_url) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "723e6178-5359-40ba-b66f-50319c131a4c",
+      "name": "Existing URL Candidate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11888,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "resolving"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "probe_pending"
+            },
+            {
+              "fieldId": "website_resolution_source",
+              "fieldValue": "={{ $json.resolution_source }}"
+            },
+            {
+              "fieldId": "resolved_website",
+              "fieldValue": "={{ $json.candidate_url }}"
+            },
+            {
+              "fieldId": "resolved_domain",
+              "fieldValue": "={{ $json.candidate_domain }}"
+            },
+            {
+              "fieldId": "website_identity_confidence",
+              "fieldValue": "={{ $json.initial_confidence }}"
+            },
+            {
+              "fieldId": "website_identity_evidence",
+              "fieldValue": "={{ { ...($json.preserved_identity_evidence || {}), source: $json.resolution_source, candidate_url: $json.candidate_url, pre_probe_confidence: $json.initial_confidence } }}"
+            },
+            {
+              "fieldId": "website_search_status",
+              "fieldValue": "={{ $json.website_search_status === 'SUCCEEDED' ? 'SUCCEEDED' : 'SKIPPED_EXISTING_URL' }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "9938ee30-a913-4a68-983e-1c111eaa4419",
+      "name": "Queue Existing Website Probe",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        12144,
+        2816
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nreturn [{\n  json: {\n    candidate_id: row.id,\n    job_id: row.job_id,\n    event_type: 'website_candidate_selected',\n    event_status: 'probe_pending',\n    event_stage: 'existing_url_selected',\n    event_severity: 'info',\n    event_error_code: '',\n    event_message: 'Existing business URL selected for identity and homepage verification.',\n    event_payload: {\n      resolution_source: row.website_resolution_source,\n      resolved_website: row.resolved_website,\n      initial_confidence: row.website_identity_confidence\n    }\n  }\n}];"
+      },
+      "id": "ceea4ab2-0a87-4a1d-abb8-8fdb94c595cf",
+      "name": "Build Existing URL Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12384,
+        2816
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "website_verification_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate_id }}"
+            },
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "b106f1e6-695e-4010-b158-ebf5c7572f8b",
+      "name": "Log Existing URL Selected",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        12624,
+        2816
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/apify~google-search-scraper/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "waitForFinish",
+              "value": "0"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.apify_input }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 90000
+        }
+      },
+      "id": "64ceec78-401e-4ab2-933c-a6f37a0a70c5",
+      "name": "Start Apify Google Search Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        12144,
+        3072
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X0MTSp5xTNWRoD55",
+          "name": "CodeNativeX Apify Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidate = $('Resolve Verification Claim').first().json;\nconst response = $json || {};\nconst body = response.body ?? response;\nconst data = body?.data ?? body;\nconst httpStatus = Number(response.statusCode || response.status || 0);\nconst detail = [\n  body?.error?.message,\n  body?.error?.type,\n  response.error?.message,\n  response.errorMessage,\n  response.message\n].filter(Boolean).join(' | ');\nconst started = Boolean(data && data.id && data.defaultDatasetId) &&\n  (!httpStatus || (httpStatus >= 200 && httpStatus < 300));\nreturn [{\n  json: {\n    ...candidate,\n    actor_started: started,\n    website_search_run_id: started ? String(data.id) : '',\n    website_search_dataset_id: started ? String(data.defaultDatasetId) : '',\n    website_search_status: started ? String(data.status || 'READY') : 'START_FAILED',\n    actor_start_error: started ? '' : (detail || 'Apify Google Search start failed with HTTP ' + (httpStatus || 'unknown')).slice(0, 1500)\n  }\n}];"
+      },
+      "id": "f7a620d4-13fc-4623-8bcf-27153d764fbf",
+      "name": "Parse Search Actor Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12384,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000023",
+              "leftValue": "={{ $json.actor_started }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4986eded-c9b8-47d8-be3b-317fd5c921a6",
+      "name": "Search Actor Started?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12624,
+        3072
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "resolving"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "search_running"
+            },
+            {
+              "fieldId": "website_search_run_id",
+              "fieldValue": "={{ $json.website_search_run_id }}"
+            },
+            {
+              "fieldId": "website_search_dataset_id",
+              "fieldValue": "={{ $json.website_search_dataset_id }}"
+            },
+            {
+              "fieldId": "website_search_status",
+              "fieldValue": "={{ $json.website_search_status }}"
+            },
+            {
+              "fieldId": "website_identity_evidence",
+              "fieldValue": "={{ { ...($json.website_identity_evidence || {}), search_query: $json.search_query, actor_run_id: $json.website_search_run_id, dataset_id: $json.website_search_dataset_id } }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "20c616bb-7fdc-41ba-b5b4-af9ba3cead34",
+      "name": "Mark Search Running",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        12864,
+        3024
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nreturn [{\n  json: {\n    candidate_id: row.id,\n    job_id: row.job_id,\n    event_type: 'website_search_started',\n    event_status: 'search_running',\n    event_stage: 'official_website_search',\n    event_severity: 'info',\n    event_error_code: '',\n    event_message: 'Official website search started.',\n    event_payload: {\n      actor_run_id: row.website_search_run_id,\n      dataset_id: row.website_search_dataset_id,\n      search_status: row.website_search_status\n    }\n  }\n}];"
+      },
+      "id": "821fd87d-2424-44a1-bfe3-fee26d17ddea",
+      "name": "Build Search Started Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13120,
+        3024
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "website_verification_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate_id }}"
+            },
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "f77745ed-2dfb-46ae-ac82-6f7abaa0b749",
+      "name": "Log Website Search Started",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        13360,
+        3024
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json || {};\nconst attempts = Number(input.website_verification_attempts || input.attempts_next || 1);\nconst maxAttempts = Number(input.website_verification_max_attempts || 3);\nconst willRetry = attempts < maxAttempts;\nconst delayMinutes = attempts <= 1 ? 1 : (attempts === 2 ? 5 : 15);\nconst nextAttempt = new Date(Date.now() + delayMinutes * 60000).toISOString();\nconst actorStatus = String(input.website_search_status || input.apify_status || '').toUpperCase();\nlet errorCode = cleanErrorCode(input.failure_code || input.probe_error_code || input.website_verification_error_code);\nif (!errorCode) {\n  if (input.actor_start_error) errorCode = 'WEBSITE_SEARCH_START_FAILED';\n  else if (input.dataset_fetch_error) errorCode = 'WEBSITE_SEARCH_DATASET_FAILED';\n  else if (input.probe_error_code) errorCode = input.probe_error_code;\n  else if (actorStatus) errorCode = 'WEBSITE_SEARCH_' + actorStatus.replace(/[^A-Z0-9]+/g, '_');\n  else errorCode = 'WEBSITE_VERIFICATION_FAILED';\n}\nconst errorMessage = String(\n  input.failure_message ||\n  input.actor_start_error ||\n  input.dataset_fetch_error ||\n  input.probe_error ||\n  input.poll_error ||\n  ('Website verification failed at status ' + (actorStatus || 'unknown') + '.')\n).slice(0, 1500);\nfunction cleanErrorCode(value) {\n  return String(value || '').toUpperCase().replace(/[^A-Z0-9_]+/g, '_').slice(0, 100);\n}\nreturn [{\n  json: {\n    ...input,\n    failure_status: willRetry ? 'pending' : 'manual_review_required',\n    failure_intake_status: willRetry ? 'website_verification_retry_pending' : 'manual_review_required',\n    failure_stage: willRetry ? 'retry_scheduled' : 'manual_review_required',\n    failure_next_attempt_at: willRetry ? nextAttempt : null,\n    failure_code: errorCode,\n    failure_message: errorMessage,\n    failure_will_retry: willRetry,\n    failure_delay_minutes: willRetry ? delayMinutes : null\n  }\n}];"
+      },
+      "id": "e30b4eb0-da2f-49c1-aa8c-79a56964d710",
+      "name": "Build Verification Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12864,
+        3200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            },
+            {
+              "keyName": "website_verification_locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.website_verification_locked_by || $json.worker_id || $json.poll_worker_id || $json.probe_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "={{ $json.failure_status }}"
+            },
+            {
+              "fieldId": "website_verification_next_attempt_at",
+              "fieldValue": "={{ $json.failure_next_attempt_at }}"
+            },
+            {
+              "fieldId": "website_verification_error_code",
+              "fieldValue": "={{ $json.failure_code }}"
+            },
+            {
+              "fieldId": "website_verification_error",
+              "fieldValue": "={{ $json.failure_message }}"
+            },
+            {
+              "fieldId": "website_search_status",
+              "fieldValue": "={{ $json.website_search_status || null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "={{ $json.failure_intake_status }}"
+            },
+            {
+              "fieldId": "need_signal",
+              "fieldValue": "={{ $json.failure_will_retry ? ($json.need_signal || null) : 'Automated website verification could not complete: ' + $json.failure_message + '; manual review required' }}"
+            },
+            {
+              "fieldId": "website_condition",
+              "fieldValue": "={{ $json.failure_will_retry ? ($json.website_condition || null) : ($json.failure_code === 'WEBSITE_DNS_FAILED' ? 'dns_lookup_failed_manual_review' : ($json.failure_code === 'WEBSITE_CONNECTION_TIMEOUT' ? 'connection_timeout_manual_review' : 'automation_failed_manual_review')) }}"
+            },
+            {
+              "fieldId": "website_verified_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "website_http_status",
+              "fieldValue": "={{ $json.website_http_status_next ?? $json.website_http_status ?? null }}"
+            },
+            {
+              "fieldId": "website_accessible",
+              "fieldValue": "={{ $json.website_accessible_next ?? $json.website_accessible ?? null }}"
+            },
+            {
+              "fieldId": "website_identity_evidence",
+              "fieldValue": "={{ $json.identity_evidence_next || $json.website_identity_evidence || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "5107c552-9687-4ddd-bd41-d70610c51dd1",
+      "name": "Update Verification Failure",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        13120,
+        3200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nconst retry = row.website_verification_status === 'pending';\nreturn [{\n  json: {\n    candidate_id: row.id,\n    job_id: row.job_id,\n    event_type: retry ? 'website_verification_retry_scheduled' : 'website_verification_failed',\n    event_status: row.website_verification_status,\n    event_stage: retry ? 'retry_scheduled' : 'website_verification_failed',\n    event_severity: retry ? 'warning' : 'error',\n    event_error_code: row.website_verification_error_code,\n    event_message: retry\n      ? 'Website verification retry scheduled after a controlled failure.'\n      : 'Website verification stopped after maximum attempts.',\n    event_payload: {\n      attempts: row.website_verification_attempts,\n      max_attempts: row.website_verification_max_attempts,\n      next_attempt_at: row.website_verification_next_attempt_at,\n      http_status: row.website_http_status,\n      probe: row.website_identity_evidence?.last_probe || null,\n      error: row.website_verification_error\n    }\n  }\n}];"
+      },
+      "id": "2aa04f3b-f3cd-4659-be77-347c4bd99a3f",
+      "name": "Build Failure Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13360,
+        3200
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "website_verification_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate_id }}"
+            },
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "2836ce47-cf95-4929-9f87-322fb62701cb",
+      "name": "Log Verification Failure",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        13600,
+        3200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "search_running"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        }
+      },
+      "id": "6a248140-92ad-41eb-981d-eaa10f4223eb",
+      "name": "Get Running Website Search",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10176,
+        3456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nreturn [{\n  json: {\n    ...row,\n    poll_url: row.website_search_run_id\n      ? 'https://api.apify.com/v2/actor-runs/' + encodeURIComponent(row.website_search_run_id)\n      : ''\n  }\n}];"
+      },
+      "id": "3c619f47-1636-4c30-87b9-f2400c078ba0",
+      "name": "Prepare Search Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10416,
+        3456
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.poll_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 45000
+        }
+      },
+      "id": "94231ad0-6783-4e4d-8330-418f6d67ef4a",
+      "name": "Poll Apify Search Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        10656,
+        3456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X0MTSp5xTNWRoD55",
+          "name": "CodeNativeX Apify Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidate = $('Prepare Search Poll').first().json;\nconst response = $json || {};\nconst body = response.body ?? response;\nconst data = body?.data ?? body;\nconst httpStatus = Number(response.statusCode || response.status || 0);\nconst apiError = Boolean(\n  (httpStatus && (httpStatus < 200 || httpStatus >= 300)) ||\n  body?.error ||\n  response.error ||\n  !data?.status\n);\nconst actorStatus = String(data?.status || '').toUpperCase();\nconst running = ['READY','RUNNING'].includes(actorStatus);\nconst succeeded = actorStatus === 'SUCCEEDED';\nconst terminal = ['FAILED','TIMED-OUT','ABORTED'].includes(actorStatus);\nconst detail = [\n  body?.error?.message,\n  body?.error?.type,\n  response.error?.message,\n  response.errorMessage,\n  response.message\n].filter(Boolean).join(' | ');\nreturn [{\n  json: {\n    ...candidate,\n    website_search_status: actorStatus || 'POLL_ERROR',\n    website_search_dataset_id: String(data?.defaultDatasetId || candidate.website_search_dataset_id || ''),\n    run_state: succeeded ? 'succeeded' : (running ? 'running' : (terminal ? 'failed' : 'poll_error')),\n    poll_error: apiError ? (detail || 'Apify run poll failed with HTTP ' + (httpStatus || 'unknown')).slice(0, 1500) : '',\n    failure_code: apiError ? 'WEBSITE_SEARCH_POLL_FAILED' : (terminal ? 'WEBSITE_SEARCH_' + actorStatus.replace(/[^A-Z0-9]+/g, '_') : ''),\n    failure_message: terminal ? 'Apify Google Search ended with status ' + actorStatus + '.' : ''\n  }\n}];"
+      },
+      "id": "d950ac4a-44f0-416a-8f9e-3c1c261cfb91",
+      "name": "Parse Search Run Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10896,
+        3456
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000036",
+              "leftValue": "={{ $json.run_state }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ab9dc68f-2fd4-4e64-a23f-094a04fc4d33",
+      "name": "Search Run Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11136,
+        3456
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000038",
+              "leftValue": "={{ $json.run_state }}",
+              "rightValue": "running",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d21e9721-9109-404e-9205-41fb42e8fb5a",
+      "name": "Search Still Running?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11376,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "search_polling"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            },
+            {
+              "keyName": "website_verification_locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.website_verification_locked_by }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "search_running"
+            },
+            {
+              "fieldId": "website_search_status",
+              "fieldValue": "={{ $json.website_search_status }}"
+            },
+            {
+              "fieldId": "website_search_dataset_id",
+              "fieldValue": "={{ $json.website_search_dataset_id || null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "f89f7f42-c46a-4226-adf6-a812829c1e1c",
+      "name": "Update Search Heartbeat",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        11616,
+        3616
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.apify.com/v2/datasets/' + encodeURIComponent($json.website_search_dataset_id) + '/items' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "clean",
+              "value": "true"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 90000
+        }
+      },
+      "id": "a4340ece-7e18-445e-9e29-ab39c5b73a82",
+      "name": "Fetch Search Dataset",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        11376,
+        3376
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X0MTSp5xTNWRoD55",
+          "name": "CodeNativeX Apify Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidate = $('Parse Search Run Status').first().json;\nconst response = $json || {};\nconst httpStatus = Number(response.statusCode || response.status || 0);\nconst body = response.body ?? response;\nconst rows = Array.isArray(body) ? body : (Array.isArray(body?.items) ? body.items : []);\nconst ok = (!httpStatus || (httpStatus >= 200 && httpStatus < 300)) && Array.isArray(rows);\nconst detail = [\n  body?.error?.message,\n  response.error?.message,\n  response.errorMessage,\n  response.message\n].filter(Boolean).join(' | ');\nreturn [{\n  json: {\n    ...candidate,\n    dataset_fetch_ok: ok,\n    search_dataset_items: rows,\n    dataset_fetch_error: ok ? '' : (detail || 'Apify dataset fetch failed with HTTP ' + (httpStatus || 'unknown')).slice(0, 1500),\n    failure_code: ok ? '' : 'WEBSITE_SEARCH_DATASET_FAILED'\n  }\n}];"
+      },
+      "id": "118015b7-9fb3-4dff-8fdc-ce346c869bc0",
+      "name": "Parse Search Dataset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11616,
+        3376
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000043",
+              "leftValue": "={{ $json.dataset_fetch_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e59000fe-e789-43b3-9bc7-080948f1db5f",
+      "name": "Search Dataset OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11856,
+        3376
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $json || {};\nconst clean = (value, max = 3000) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);\nconst fold = (value) => clean(value, 4000).toLowerCase().normalize('NFKD').replace(/[^\\w\\s]/g, ' ').replace(/_/g, ' ').replace(/\\s+/g, ' ').trim();\nconst normalizeUrl = (value) => {\n  let raw = clean(value, 2000);\n  if (!raw) return null;\n  raw = raw.replace(/\\s+/g, '');\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = candidate.match(/^https?:\\/\\/(?:[^@\\/\\s]+@)?([^\\/?#:\\s]+)(?::\\d+)?(?:[\\/?#]|$)/i);\n  if (!match) return null;\n  const domain = String(match[1] || '').toLowerCase().replace(/^www\\./, '').replace(/\\.$/, '');\n  if (!/^[a-z0-9.-]+\\.[a-z]{2,}$/i.test(domain)) return null;\n  return { url: candidate.split('#')[0], domain };\n};\nconst excluded = [...['att.net','gmail.com','outlook.com','hotmail.com','live.com','yahoo.com','yahoo.net','currently.att.yahoo.com'],\n  'google.com','googleusercontent.com','g.page','yelp.com','facebook.com','instagram.com',\n  'linkedin.com','youtube.com','x.com','twitter.com','tiktok.com','yellowpages.com',\n  'mapquest.com','healthgrades.com','zocdoc.com','vitals.com','doximity.com',\n  'bbb.org','chamberofcommerce.com','opencorporates.com','crunchbase.com',\n  'tripadvisor.com','angi.com','thumbtack.com','nextdoor.com','wikipedia.org','waze.com','snapfinance.com','tintingnearme.com','miamigoeslocal.com','nears.me','manta.com','bizapedia.com','cylex.us.com','alignable.com','merchantcircle.com','local.yahoo.com','foursquare.com','superpages.com','hotfrog.com','brownbook.net','showmelocal.com','whereorg.com','dentalplans.com','wheree.com','zoominfo.com','webmd.com','doctor.com','carecredit.com','birdeye.com','trustpilot.com','npidb.org','npino.com','npi-lookup.org','npi-lookup.com','npiprofile.com','nppes.cms.hhs.gov','npi.wiki','doximity.com','medicare.gov','yandex.com','point2homes.com','denteldoc.com','wellness.com','dentists.com'\n];\nconst isExcluded = (domain) => excluded.some((entry) => domain === entry || domain.endsWith('.' + entry));\nconst stop = new Set(['the','and','of','at','in','on','for','a','an','llc','inc','ltd','pllc','pc','company','co']);\nconst nameTokens = [...new Set(fold(context.company_name).split(' ').filter((token) => token.length >= 3 && !stop.has(token)))];\nconst companyFold = fold(context.company_name);\nconst cityFold = fold(context.city);\nconst phoneDigits = clean(context.phone, 80).replace(/\\D/g, '');\nconst phoneTail = phoneDigits.slice(-7);\nconst streetNumber = (clean(context.address, 300).match(/\\b\\d{2,6}\\b/) || [])[0] || '';\nconst currentDomain = normalizeUrl(context.website || '')?.domain || '';\nconst emailDomain = clean(context.email, 320).toLowerCase().split('@').pop();\nconst organic = [];\nfor (const page of Array.isArray(context.search_dataset_items) ? context.search_dataset_items : []) {\n  if (Array.isArray(page?.organicResults)) organic.push(...page.organicResults);\n  else if (page?.type === 'organic' && page?.url) organic.push(page);\n}\nconst ranked = [];\nfor (const result of organic) {\n  const parsed = normalizeUrl(result?.url);\n  if (!parsed || isExcluded(parsed.domain)) continue;\n  if (/\\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)(\\?|$)/i.test(parsed.url)) continue;\n  const title = clean(result?.title, 500);\n  const description = clean(result?.description, 1500);\n  const text = fold(title + ' ' + description + ' ' + parsed.domain);\n  const titleFold = fold(title);\n  const matched = nameTokens.filter((token) => text.includes(token));\n  const coverage = nameTokens.length ? matched.length / nameTokens.length : 0;\n  let score = Math.round(coverage * 40);\n  const evidence = {\n    name_token_coverage: Number(coverage.toFixed(2)),\n    matched_name_tokens: matched,\n    city_match: Boolean(cityFold && text.includes(cityFold)),\n    phone_match: Boolean(phoneTail && clean(description).replace(/\\D/g, '').includes(phoneTail)),\n    street_number_match: Boolean(streetNumber && text.includes(streetNumber)),\n    existing_domain_match: Boolean(currentDomain && parsed.domain === currentDomain),\n    email_domain_match: Boolean(emailDomain && parsed.domain === emailDomain)\n  };\n  if (companyFold && titleFold.includes(companyFold)) score += 15;\n  if (evidence.city_match) score += 12;\n  if (evidence.phone_match) score += 35;\n  if (evidence.street_number_match) score += 10;\n  if (evidence.existing_domain_match) score += 40;\n  if (evidence.email_domain_match) score += 45;\n  const genericBrand = new Set(['dental','dentist','dentists','clinic','care','health','medical','services','service','plumbing','plumber','hotel','hotels','restaurant','restaurants','salon','spa','business','group','center','centre']);\n  const firstBrandToken = nameTokens.find(token => !genericBrand.has(token) && !cityFold.split(' ').includes(token)) || '';\n  if (firstBrandToken && fold(parsed.domain).includes(firstBrandToken)) score += 10;\n  if (parsed.url.startsWith('https://')) score += 3;\n  const position = Number(result?.position || 10);\n  if (position <= 3) score += 5;\n  if (/\\b(top|best|directory|reviews?|near me|list)\\b/i.test(title) && coverage < 0.75) score -= 15;\n  ranked.push({\n    url: parsed.url,\n    domain: parsed.domain,\n    title,\n    description,\n    position,\n    confidence: Math.max(0, Math.min(100, score)),\n    evidence\n  });\n}\nranked.sort((a,b) => b.confidence - a.confidence || a.position - b.position);\nconst best = ranked[0] || null;\nconst resolved = Boolean(best && best.confidence >= 40);\nreturn [{\n  json: {\n    ...context,\n    resolution_status: resolved ? 'resolved' : 'not_resolved',\n    resolved_website_candidate: resolved ? best.url : '',\n    resolved_domain_candidate: resolved ? best.domain : '',\n    website_resolution_source_next: resolved ? 'google_search_organic' : 'google_search_no_confident_match',\n    website_identity_confidence_next: resolved ? best.confidence : 0,\n    website_identity_evidence_next: {\n      search_query: context.search_dataset_items?.[0]?.searchQuery?.term || '',\n      organic_results_seen: organic.length,\n      eligible_domains_seen: ranked.length,\n      selected: best,\n      top_candidates: ranked.slice(0, 10)\n    }\n  }\n}];"
+      },
+      "id": "9bb5fcd8-8cbe-4f96-ac03-c5a5e03e2eb7",
+      "name": "Select Official Website",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12096,
+        3376
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000046",
+              "leftValue": "={{ $json.resolution_status }}",
+              "rightValue": "resolved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "015b7a6e-5fac-4a58-9641-fc76d9cff0f7",
+      "name": "Official Website Resolved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12336,
+        3376
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "search_polling"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            },
+            {
+              "keyName": "website_verification_locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.website_verification_locked_by || $json.poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "probe_pending"
+            },
+            {
+              "fieldId": "website_resolution_source",
+              "fieldValue": "={{ $json.website_resolution_source_next }}"
+            },
+            {
+              "fieldId": "resolved_website",
+              "fieldValue": "={{ $json.resolved_website_candidate }}"
+            },
+            {
+              "fieldId": "resolved_domain",
+              "fieldValue": "={{ $json.resolved_domain_candidate }}"
+            },
+            {
+              "fieldId": "website_identity_confidence",
+              "fieldValue": "={{ $json.website_identity_confidence_next }}"
+            },
+            {
+              "fieldId": "website_identity_evidence",
+              "fieldValue": "={{ $json.website_identity_evidence_next }}"
+            },
+            {
+              "fieldId": "website_search_status",
+              "fieldValue": "SUCCEEDED"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "84079da5-cb7a-4c8e-a95f-a8590688075c",
+      "name": "Queue Resolved Website Probe",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        12576,
+        3312
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nreturn [{\n  json: {\n    candidate_id: row.id,\n    job_id: row.job_id,\n    event_type: 'official_website_resolved',\n    event_status: 'probe_pending',\n    event_stage: 'official_domain_selected',\n    event_severity: 'info',\n    event_error_code: '',\n    event_message: 'A probable official website was selected and queued for homepage verification.',\n    event_payload: {\n      resolved_website: row.resolved_website,\n      resolved_domain: row.resolved_domain,\n      confidence: row.website_identity_confidence,\n      evidence: row.website_identity_evidence\n    }\n  }\n}];"
+      },
+      "id": "25b8adf0-1a0c-4086-9ac8-372b98dcaa67",
+      "name": "Build Website Resolved Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12816,
+        3312
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "website_verification_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate_id }}"
+            },
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "b4b103e1-b105-4854-bc5a-f57cded8b2cd",
+      "name": "Log Official Website Resolved",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        13056,
+        3312
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "search_polling"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            },
+            {
+              "keyName": "website_verification_locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.website_verification_locked_by || $json.poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "manual_review_required"
+            },
+            {
+              "fieldId": "website_resolution_source",
+              "fieldValue": "google_search_no_confident_match"
+            },
+            {
+              "fieldId": "website_identity_confidence",
+              "fieldValue": "={{ $json.website_identity_confidence_next }}"
+            },
+            {
+              "fieldId": "website_identity_evidence",
+              "fieldValue": "={{ $json.website_identity_evidence_next }}"
+            },
+            {
+              "fieldId": "website_condition",
+              "fieldValue": "official_website_unresolved"
+            },
+            {
+              "fieldId": "need_signal",
+              "fieldValue": "Official website could not be confidently resolved; manual verification required"
+            },
+            {
+              "fieldId": "website_verified_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_error_code",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_error",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "manual_review_required"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "ad952f2f-5dfe-4339-9563-ae54155a5908",
+      "name": "Mark Website Manual Review",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        12576,
+        3456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nreturn [{\n  json: {\n    candidate_id: row.id,\n    job_id: row.job_id,\n    event_type: 'website_manual_review_required',\n    event_status: 'manual_review_required',\n    event_stage: 'official_domain_unresolved',\n    event_severity: 'warning',\n    event_error_code: '',\n    event_message: 'No official website passed the confidence threshold; candidate is held for manual review and blocked from automatic intake.',\n    event_payload: {\n      confidence: row.website_identity_confidence,\n      evidence: row.website_identity_evidence,\n      intake_status: row.intake_status\n    }\n  }\n}];"
+      },
+      "id": "b8beecb7-e299-4b7b-b874-03b03a5a5273",
+      "name": "Build Manual Review Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12816,
+        3456
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "website_verification_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate_id }}"
+            },
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "8fa5250a-5c71-4175-9be4-b614fe54f871",
+      "name": "Log Manual Review Required",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        13056,
+        3456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "probe_pending"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        }
+      },
+      "id": "8f9060d9-bd47-4949-a718-a760172dc37e",
+      "name": "Get Pending Website Probe",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10176,
+        3888
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nconst clean = (value, max = 2000) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);\nlet raw = clean(row.resolved_website || row.website, 2000).replace(/\\s+/g, '');\nlet probeUrl = '';\nif (raw) {\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = candidate.match(/^https?:\\/\\/(?:[^@\\/\\s]+@)?([^\\/?#:\\s]+)(?::\\d+)?(?:[\\/?#]|$)/i);\n  const domain = String(match?.[1] || '').toLowerCase().replace(/^www\\./, '').replace(/\\.$/, '');\n  if (match && /^[a-z0-9.-]+\\.[a-z]{2,}$/i.test(domain)) probeUrl = candidate.split('#')[0];\n}\nreturn [{\n  json: {\n    ...row,\n    probe_url: probeUrl,\n    failure_code: probeUrl ? '' : 'INVALID_WEBSITE_URL',\n    failure_message: probeUrl ? '' : 'Resolved website URL is invalid or empty.'\n  }\n}];"
+      },
+      "id": "31f1115a-4939-469a-9924-1346794966f3",
+      "name": "Prepare Website Probe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10416,
+        3888
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000056",
+              "leftValue": "={{ Boolean($json.probe_url) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a9a80579-989f-4a59-8acb-347dc57b2cdf",
+      "name": "Probe URL Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        10656,
+        3888
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.probe_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; CodeNativeXWebsiteVerifier/1.0)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "a1646305-9feb-4032-ad87-17ea85f48847",
+      "name": "Fetch Website Homepage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        10896,
+        3824
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidate = $('Prepare Website Probe').first().json;\n// No URL global dependency: compatible with n8n Code-node sandboxes.\nconst normalizeWebsite = (value) => {\n  if (Array.isArray(value)) {\n    for (const item of value) { const result = normalizeWebsite(item); if (result.website) return result; }\n    return { website: '', domain: '' };\n  }\n  if (value && typeof value === 'object') return normalizeWebsite(value.url || value.uri || value.website || value.value || '');\n  let raw = String(value ?? '').trim().replace(/&amp;/gi, '&');\n  if (!raw || /[\\s\\\\<>\"'`]/.test(raw)) return { website: '', domain: '' };\n  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\\/\\//i.test(raw)) return { website: '', domain: '' };\n  if (raw.startsWith('//')) raw = 'https:' + raw;\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = candidate.match(/^(https?):\\/\\/([^/?#:]+)(?::(\\d{1,5}))?([/?#].*)?$/i);\n  if (!match || match[2].includes('@')) return { website: '', domain: '' };\n  const host = match[2].toLowerCase().replace(/\\.$/, '');\n  if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/i.test(host)) return { website: '', domain: '' };\n  if (match[3] && !['80', '443'].includes(match[3])) return { website: '', domain: '' };\n  const domain = host.replace(/^www\\./, '');\n  const blockedSites = ['google.com', 'google.co.uk', 'maps.app.goo.gl', 'goo.gl', 'g.page', 'googleusercontent.com', 'facebook.com', 'fb.com', 'instagram.com', 'linkedin.com', 'yelp.com', 'youtube.com', 'tiktok.com', 'twitter.com', 'x.com', 'yellowpages.com', 'mapquest.com', 'tripadvisor.com', 'bbb.org', 'chamberofcommerce.com', 'manta.com', 'angi.com', 'thumbtack.com', 'healthgrades.com', 'zocdoc.com', 'webmd.com', 'gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com'];\n  if (blockedSites.some(site => domain === site || domain.endsWith('.' + site))) return { website: '', domain: '' };\n  let suffix = (match[4] || '/').split('#')[0] || '/';\n  if (suffix.startsWith('?')) suffix = '/' + suffix;\n  return { website: match[1].toLowerCase() + '://' + host + (match[3] ? ':' + match[3] : '') + suffix, domain };\n};\nconst websiteFromPlace = row => {\n  for (const value of [row.website, row.websiteUri, row.websiteUrl, row.website_url, row.webSite, row.websites, row.websiteDetails]) {\n    const result = normalizeWebsite(value);\n    if (result.website) return result;\n  }\n  return { website: '', domain: '' };\n};\nconst routeWebsiteService = (requested, website) => {\n  const service = String(requested || 'Website Redesign').trim();\n  const websiteServices = ['Website Redesign', 'New Website', 'Web Development', 'SEO Improvement', 'Performance Optimization'];\n  if (!websiteServices.includes(service)) return service;\n  if (!website) return 'New Website';\n  return ['New Website', 'Web Development'].includes(service) ? 'Website Redesign' : service;\n};\n\nconst response = $json || {};\nconst status = Number(response.statusCode || response.status || response.error?.statusCode || response.error?.httpCode || 0);\nconst err = response.error;\nconst cause = err && typeof err === 'object' ? err.cause : null;\nconst networkCode = String(cause?.code || err?.code || response.code || '').toUpperCase();\nconst errorDetail = [typeof err === 'string' ? err : err?.message,\n  cause?.message, networkCode, response.errorMessage, response.message]\n  .filter(Boolean).join(' | ').slice(0, 1200);\nconst fetchErrorCode = /ENOTFOUND|EAI_AGAIN/.test(networkCode + ' ' + errorDetail)\n  ? 'WEBSITE_DNS_FAILED' : /TIMEOUT|TIMEDOUT|ETIMEDOUT/i.test(networkCode + ' ' + errorDetail)\n  ? 'WEBSITE_CONNECTION_TIMEOUT' : /ECONNREFUSED/.test(networkCode + ' ' + errorDetail)\n  ? 'WEBSITE_CONNECTION_REFUSED' : 'WEBSITE_FETCH_FAILED';\nconst bodyRaw = response.body ?? response.data ?? '';\nconst html = typeof bodyRaw === 'string' ? bodyRaw.slice(0, 2000000) : JSON.stringify(bodyRaw || {}).slice(0, 2000000);\nconst clean = (value, max = 3000) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);\nconst decode = (value) => clean(String(value || '').replace(/&amp;/gi, '&').replace(/&quot;/gi, '\"').replace(/&#39;/gi, \"'\").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>'), 3000);\nconst fold = (value) => clean(value, 500000).toLowerCase().normalize('NFKD').replace(/[^\\w\\s]/g, ' ').replace(/_/g, ' ').replace(/\\s+/g, ' ').trim();\nconst extract = (regex) => decode((html.match(regex) || [,''])[1] || '');\nconst title = extract(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);\nconst metaDescription = extract(/<meta[^>]+(?:name|property)\\s*=\\s*[\"'](?:description|og:description)[\"'][^>]+content\\s*=\\s*[\"']([^\"']*)[\"'][^>]*>/i) || extract(/<meta[^>]+content\\s*=\\s*[\"']([^\"']*)[\"'][^>]+(?:name|property)\\s*=\\s*[\"'](?:description|og:description)[\"'][^>]*>/i);\nconst h1 = extract(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i).replace(/<[^>]+>/g, ' ');\nconst hasViewport = /<meta[^>]+name\\s*=\\s*[\"']viewport[\"'][^>]*>/i.test(html);\nconst hasContactCta = /\\b(contact us|call us|book (?:an )?appointment|schedule (?:an )?appointment|request (?:an )?appointment|get in touch|free consultation)\\b/i.test(html);\nconst text = fold(html.replace(/<script[\\s\\S]*?<\\/script>/gi, ' ').replace(/<style[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' '));\nconst titleFold = fold(title);\nconst stop = new Set(['the','and','of','at','in','on','for','a','an','llc','inc','ltd','pllc','pc','company','co']);\nconst nameTokens = [...new Set(fold(candidate.company_name).split(' ').filter((token) => token.length >= 3 && !stop.has(token)))];\nconst titleMatches = nameTokens.filter((token) => titleFold.includes(token));\nconst bodyMatches = nameTokens.filter((token) => text.includes(token));\nconst titleCoverage = nameTokens.length ? titleMatches.length / nameTokens.length : 0;\nconst bodyCoverage = nameTokens.length ? bodyMatches.length / nameTokens.length : 0;\nconst phoneDigits = clean(candidate.phone, 80).replace(/\\D/g, '');\nconst phoneTail = phoneDigits.slice(-7);\nconst phoneMatch = Boolean(phoneTail && html.replace(/\\D/g, '').includes(phoneTail));\nconst cityMatch = Boolean(candidate.city && text.includes(fold(candidate.city)));\nconst streetNumber = (clean(candidate.address, 300).match(/\\b\\d{2,6}\\b/) || [])[0] || '';\nconst streetMatch = Boolean(streetNumber && text.includes(streetNumber));\nconst domainMatch = clean(candidate.probe_url, 2000).match(/^https?:\\/\\/(?:[^@\\/\\s]+@)?([^\\/?#:\\s]+)(?::\\d+)?(?:[\\/?#]|$)/i);\nconst finalProbeUrl = clean(response.finalUrl || response.url || candidate.probe_url,2000);\nconst finalDomainMatch = finalProbeUrl.match(/^https?:\\/\\/([^\\/?#:]+)(?:[\\/?#]|$)/i);\nconst domain = String(finalDomainMatch?.[1] || domainMatch?.[1] || '').toLowerCase().replace(/^www\\./, '').replace(/\\.$/, '');\nconst emailDomain = clean(candidate.email, 320).toLowerCase().split('@').pop();\nconst emailDomainMatch = Boolean(emailDomain && domain === emailDomain);\nconst blocked = [...['att.net','gmail.com','outlook.com','hotmail.com','live.com','yahoo.com','yahoo.net','currently.att.yahoo.com'],\"google.com\",\"googleusercontent.com\",\"g.page\",\"yelp.com\",\"facebook.com\",\"instagram.com\",\"linkedin.com\",\"youtube.com\",\"x.com\",\"twitter.com\",\"tiktok.com\",\"yellowpages.com\",\"mapquest.com\",\"healthgrades.com\",\"zocdoc.com\",\"vitals.com\",\"doximity.com\",\"bbb.org\",\"chamberofcommerce.com\",\"opencorporates.com\",\"crunchbase.com\",\"tripadvisor.com\",\"angi.com\",\"thumbtack.com\",\"nextdoor.com\",\"wikipedia.org\",\"waze.com\",\"snapfinance.com\",\"tintingnearme.com\",\"miamigoeslocal.com\",\"nears.me\",\"manta.com\",\"bizapedia.com\",\"cylex.us.com\",\"alignable.com\",\"merchantcircle.com\",\"local.yahoo.com\",\"foursquare.com\",\"superpages.com\",\"hotfrog.com\",\"brownbook.net\",\"showmelocal.com\",\"whereorg.com\",'dentalplans.com','wheree.com','zoominfo.com','webmd.com','doctor.com','carecredit.com','birdeye.com','trustpilot.com','npidb.org','npino.com','npi-lookup.org','npi-lookup.com','npiprofile.com','nppes.cms.hhs.gov','npi.wiki','doximity.com','medicare.gov','yandex.com','point2homes.com','denteldoc.com','wellness.com','dentists.com'];\nconst domainBlocked = blocked.some((entry) => domain === entry || domain.endsWith('.' + entry));\nconst domainLabel = fold(domain.split('.')[0] || '');\nconst brandMatches = nameTokens.filter((token) => domainLabel.includes(token));\nconst brandCoverage = nameTokens.length ? brandMatches.length / nameTokens.length : 0;\nconst urlText = clean(candidate.probe_url, 2000).toLowerCase();\nconst directoryLike = domainBlocked ||\n    /\\b(?:npi|registry|registries|provider database|license lookup|employee directory)\\b/i.test(title) ||\n    /\\/(?:organizations|directory|profiles?|registry|npi|maps\\/org|government|courts?)(?:\\/|[.?_-])/i.test(urlText) || /(?:\\/|\\b)(?:browse|directory|directories|listing|listings|search|find-a|find-an|find-stores|providers?|live-map)(?:[\\/.?_-]|\\b)/i.test(urlText);\nconst genericBrand = new Set(['dental','dentist','dentists','clinic','care','health','medical','services','service','plumbing','plumber','hotel','hotels','restaurant','restaurants','salon','spa','business','group','center','centre']);\nconst cityTokens = new Set(fold(candidate.city).split(' '));\nconst distinctiveTokens = nameTokens.filter(token => !genericBrand.has(token) && !cityTokens.has(token));\nconst distinctiveDomainMatch = distinctiveTokens.some(token => domainLabel.includes(token));\nconst fullTitleMatch = nameTokens.length > 0 && nameTokens.every(token => titleFold.split(' ').includes(token));\nconst distinctiveBodyMatch = distinctiveTokens.some(token => text.split(' ').includes(token));\nconst brandedHomepage = (distinctiveDomainMatch && distinctiveBodyMatch && (phoneMatch || cityMatch || titleCoverage >= 0.5)) ||\n  (fullTitleMatch && brandCoverage >= 0.34 && (phoneMatch || cityMatch));\nconst branchBrandMatch = distinctiveDomainMatch && distinctiveBodyMatch && titleMatches.length >= 2 && titleCoverage >= 0.5 && (phoneMatch || cityMatch && titleCoverage >= 0.75);\nconst contactBackedBrandMatch = phoneMatch && titleCoverage >= 0.5 && bodyCoverage >= 0.5 && (distinctiveDomainMatch || brandCoverage >= 0.5);\nconst strongIdentity = !directoryLike && Boolean(brandedHomepage || branchBrandMatch || contactBackedBrandMatch);\nlet confidence = 0; // Fresh page evidence, not the previous search estimate.\nconfidence += Math.round(titleCoverage * 30) + Math.round(bodyCoverage * 20);\nif (phoneMatch) confidence += 25;\nif (cityMatch) confidence += 8;\nif (streetMatch) confidence += 7;\n// Matching an email provider domain is not identity evidence.\nif (brandCoverage >= 0.34) confidence += 15;\nif (directoryLike) confidence -= 60;\nif(strongIdentity) confidence = Math.max(confidence, phoneMatch ? 95 : 85);\nconfidence = Math.max(0, Math.min(100, confidence));\nconst retryable = status === 0 || [408,425,429].includes(status) || status >= 500;\nconst challenge = /^(just a moment|access denied|attention required|request blocked|verify you are human|robot check)/i.test(title.trim());\nconst accessible = status >= 200 && status < 300 && html.length >= 50 && !challenge;\nconst restricted = [401,403].includes(status);\nconst ssl = finalProbeUrl.startsWith('https://');\nconst yearMatches = [...html.matchAll(/(?:©|&copy;|copyright)\\s*(?:\\d{4}\\s*[-–]\\s*)?(\\d{4})/gi)].map((match) => Number(match[1])).filter((year) => year >= 1990 && year <= new Date().getUTCFullYear() + 1);\nconst copyrightYear = yearMatches.length ? Math.max(...yearMatches) : null;\nif (retryable) return [{ json: {\n  ...candidate, retryable_error: true,\n  probe_error_code: status === 429 ? 'WEBSITE_RATE_LIMITED' :\n    (status >= 500 ? 'WEBSITE_SERVER_ERROR' : fetchErrorCode),\n  probe_error: ('Homepage probe failed: ' + (status ? 'HTTP ' + status :\n    (errorDetail || 'No HTTP response received'))).slice(0,1500),\n  website_http_status_next: status || null,\n  website_accessible_next: status ? false : null,\n  identity_evidence_next: { ...(candidate.website_identity_evidence || {}),\n    last_probe: { url: candidate.probe_url, http_status: status || null,\n      network_code: networkCode || null, error: errorDetail || null,\n      checked_at: new Date().toISOString() } }\n} }];\nlet verificationStatus = 'needs_review';\nlet condition = restricted ? 'access_restricted' : (!accessible ? 'website_unreachable' : (directoryLike ? 'directory_or_aggregator' : 'identity_uncertain'));\nlet needSignal = restricted ? 'Website blocks automated verification; manual review required' : (!accessible ? 'Website URL is not currently accessible; manual review required' : (directoryLike ? 'Directory or aggregator page is not accepted as the official business website' : 'Website identity match is uncertain; manual review required'));\nif (accessible && !directoryLike && confidence >= 70 && strongIdentity) {\n  verificationStatus = 'verified';\n  const issues = [];\n  if (!title) issues.push('missing page title');\n  if (!metaDescription) issues.push('missing meta description');\n  if (!hasViewport) issues.push('missing mobile viewport');\n  if (!h1) issues.push('missing H1');\n  if (!hasContactCta) issues.push('no clear contact or booking CTA');\n  condition = issues.length ? 'basic_issues_detected' : 'verified_basic';\n  needSignal = issues.length ? 'Website verified; ' + issues.join(', ') : 'Website verified; deep performance audit pending';\n}\nreturn [{ json: {\n  ...candidate,\n  retryable_error: false,\n  verification_status_next: verificationStatus,\n  website_condition_next: condition,\n  need_signal_next: needSignal.slice(0, 1000),\n  service_interest_next: routeWebsiteService(candidate.raw_payload?.requested_service || candidate.service_interest, verificationStatus === 'verified' ? finalProbeUrl : (candidate.website || candidate.resolved_website)),\n  website_to_save: verificationStatus === 'verified' ? finalProbeUrl : (candidate.website || null),\n  domain_to_save: verificationStatus === 'verified' ? domain : (candidate.domain || null),\n  resolved_website_next: finalProbeUrl,\n  resolved_domain_next: domain,\n  identity_confidence_next: accessible ? confidence : Number(candidate.website_identity_confidence || 0),\n  verification_error_code_next: restricted ? 'WEBSITE_ACCESS_RESTRICTED' : (!accessible ? 'WEBSITE_HTTP_ERROR' : null),\n  verification_error_next: restricted ? 'Homepage returned HTTP ' + status + '; automated access denied. Manual review required.' : (!accessible ? 'Homepage returned HTTP ' + status + '; manual review required.' : null),\n  identity_evidence_next: { ...(candidate.website_identity_evidence || {}), homepage: { http_status: status, accessible, title_token_coverage: Number(titleCoverage.toFixed(2)), body_token_coverage: Number(bodyCoverage.toFixed(2)), phone_match: phoneMatch, city_match: cityMatch, street_number_match: streetMatch, email_domain_match: emailDomainMatch, blocked_domain: domainBlocked, directory_like: directoryLike, brand_domain_coverage: Number(brandCoverage.toFixed(2)), strong_identity: strongIdentity } },\n  website_http_status_next: status || null,\n  website_accessible_next: accessible,\n  website_has_ssl_next: ssl,\n  website_title_next: accessible ? title : null,\n  website_meta_description_next: accessible ? metaDescription : null,\n  website_h1_next: accessible ? h1 : null,\n  website_has_viewport_next: accessible ? hasViewport : null,\n  website_has_contact_cta_next: accessible ? hasContactCta : null,\n  website_copyright_year_next: accessible ? copyrightYear : null\n} }];"
+      },
+      "id": "77f5849f-f40e-491e-a4cc-73cb5204ca49",
+      "name": "Analyze Website Homepage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11136,
+        3824
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000060",
+              "leftValue": "={{ $json.retryable_error === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "12f6c79c-bd17-4c07-bc05-6dca3112aac7",
+      "name": "Probe Retryable Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        11376,
+        3824
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "probe_processing"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            },
+            {
+              "keyName": "website_verification_locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.website_verification_locked_by || $json.probe_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website",
+              "fieldValue": "={{ $json.website_to_save || null }}"
+            },
+            {
+              "fieldId": "domain",
+              "fieldValue": "={{ $json.domain_to_save || null }}"
+            },
+            {
+              "fieldId": "resolved_website",
+              "fieldValue": "={{ $json.resolved_website_next || null }}"
+            },
+            {
+              "fieldId": "resolved_domain",
+              "fieldValue": "={{ $json.resolved_domain_next || null }}"
+            },
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "={{ $json.verification_status_next === 'verified' ? 'verified' : 'manual_review_required' }}"
+            },
+            {
+              "fieldId": "website_identity_confidence",
+              "fieldValue": "={{ $json.identity_confidence_next }}"
+            },
+            {
+              "fieldId": "website_identity_evidence",
+              "fieldValue": "={{ $json.identity_evidence_next }}"
+            },
+            {
+              "fieldId": "website_http_status",
+              "fieldValue": "={{ $json.website_http_status_next }}"
+            },
+            {
+              "fieldId": "website_accessible",
+              "fieldValue": "={{ $json.website_accessible_next }}"
+            },
+            {
+              "fieldId": "website_has_ssl",
+              "fieldValue": "={{ $json.website_has_ssl_next }}"
+            },
+            {
+              "fieldId": "website_title",
+              "fieldValue": "={{ $json.website_title_next || null }}"
+            },
+            {
+              "fieldId": "website_meta_description",
+              "fieldValue": "={{ $json.website_meta_description_next || null }}"
+            },
+            {
+              "fieldId": "website_h1",
+              "fieldValue": "={{ $json.website_h1_next || null }}"
+            },
+            {
+              "fieldId": "website_has_viewport",
+              "fieldValue": "={{ $json.website_has_viewport_next }}"
+            },
+            {
+              "fieldId": "website_has_contact_cta",
+              "fieldValue": "={{ $json.website_has_contact_cta_next }}"
+            },
+            {
+              "fieldId": "website_copyright_year",
+              "fieldValue": "={{ $json.website_copyright_year_next || null }}"
+            },
+            {
+              "fieldId": "website_condition",
+              "fieldValue": "={{ $json.website_condition_next }}"
+            },
+            {
+              "fieldId": "need_signal",
+              "fieldValue": "={{ $json.need_signal_next }}"
+            },
+            {
+              "fieldId": "website_verified_at",
+              "fieldValue": "={{ $json.verification_status_next === 'verified' ? $now : null }}"
+            },
+            {
+              "fieldId": "website_verification_next_attempt_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_error_code",
+              "fieldValue": "={{ $json.verification_error_code_next || null }}"
+            },
+            {
+              "fieldId": "website_verification_error",
+              "fieldValue": "={{ $json.verification_error_next || null }}"
+            },
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "={{ $json.raw_payload?.human_review_only === true ? 'manual_review_required' : ($json.verification_status_next === 'verified' ? 'website_verified' : 'manual_review_required') }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "service_interest",
+              "fieldValue": "={{ $json.service_interest_next || $json.service_interest || 'Website Redesign' }}"
+            }
+          ]
+        }
+      },
+      "id": "1eb6f54f-b042-4120-bc0d-65bd802848cf",
+      "name": "Save Website Verification",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        11616,
+        3792
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nconst verified = row.website_verification_status === 'verified';\nreturn [{\n  json: {\n    candidate_id: row.id,\n    job_id: row.job_id,\n    event_type: verified ? 'website_verified' : 'website_review_required',\n    event_status: row.website_verification_status,\n    event_stage: 'homepage_verification_complete',\n    event_severity: verified ? 'info' : 'warning',\n    event_error_code: row.website_verification_error_code || '',\n    event_message: verified\n      ? 'Official website identity and homepage basics were verified.'\n      : 'Website probe completed but manual review is required.',\n    event_payload: {\n      website: row.website || row.resolved_website,\n      domain: row.domain || row.resolved_domain,\n      http_status: row.website_http_status,\n      accessible: row.website_accessible,\n      identity_confidence: row.website_identity_confidence,\n      condition: row.website_condition,\n      need_signal: row.need_signal,\n      intake_status: row.intake_status\n    }\n  }\n}];"
+      },
+      "id": "3c06f9fa-8276-4d22-8cf4-2f2db919819e",
+      "name": "Build Website Verification Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11856,
+        3792
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "website_verification_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate_id }}"
+            },
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "a3584fdf-0b1f-46d6-9522-05ea44afe15b",
+      "name": "Log Website Verification",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        12096,
+        3792
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $json || {};\nconst clean = (value, max = 3000) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);\nconst fold = (value) => clean(value, 4000).toLowerCase().normalize('NFKD').replace(/[^\\w\\s]/g, ' ').replace(/_/g, ' ').replace(/\\s+/g, ' ').trim();\nconst stop = new Set(['the','and','of','at','in','on','for','a','an','llc','inc','ltd','pllc','pc','company','co']);\nconst blocked = [...['att.net','gmail.com','outlook.com','hotmail.com','live.com','yahoo.com','yahoo.net','currently.att.yahoo.com'],\"google.com\",\"googleusercontent.com\",\"g.page\",\"yelp.com\",\"facebook.com\",\"instagram.com\",\"linkedin.com\",\"youtube.com\",\"x.com\",\"twitter.com\",\"tiktok.com\",\"yellowpages.com\",\"mapquest.com\",\"healthgrades.com\",\"zocdoc.com\",\"vitals.com\",\"doximity.com\",\"bbb.org\",\"chamberofcommerce.com\",\"opencorporates.com\",\"crunchbase.com\",\"tripadvisor.com\",\"angi.com\",\"thumbtack.com\",\"nextdoor.com\",\"wikipedia.org\",\"waze.com\",\"snapfinance.com\",\"tintingnearme.com\",\"miamigoeslocal.com\",\"nears.me\",\"manta.com\",\"bizapedia.com\",\"cylex.us.com\",\"alignable.com\",\"merchantcircle.com\",\"local.yahoo.com\",\"foursquare.com\",\"superpages.com\",\"hotfrog.com\",\"brownbook.net\",\"showmelocal.com\",\"whereorg.com\",'dentalplans.com','wheree.com','zoominfo.com','webmd.com','doctor.com','carecredit.com','birdeye.com','trustpilot.com','npidb.org','npino.com','npi-lookup.org','npi-lookup.com','npiprofile.com','nppes.cms.hhs.gov','npi.wiki','doximity.com','medicare.gov','yandex.com','point2homes.com','denteldoc.com','wellness.com','dentists.com'];\nconst isBlocked = (domain) => blocked.some((entry) => domain === entry || domain.endsWith('.' + entry));\nconst nameTokens = [...new Set(fold(context.company_name).split(' ').filter((token) => token.length >= 3 && !stop.has(token)))];\nconst genericBrand = new Set(['dental','dentist','dentists','clinic','care','health','medical','services','service','plumbing','plumber','hotel','hotels','restaurant','restaurants','salon','spa','business','group','center','centre']);\nconst cityTokens = new Set(fold(context.city).split(' '));\nconst distinctiveTokens = nameTokens.filter(token => !genericBrand.has(token) && !cityTokens.has(token));\nconst companyFold = fold(context.company_name);\nconst review = (candidate) => {\n  if (!candidate || !candidate.url || !candidate.domain) return null;\n  const urlText = clean(candidate.url, 2000).toLowerCase();\n  const titleText = clean(candidate.title, 500).toLowerCase();\n  const domainText = fold(String(candidate.domain).split('.')[0]);\n  const blockedDomain = isBlocked(String(candidate.domain).toLowerCase());\n  const directoryLike = blockedDomain ||\n    /\\b(?:npi|registry|registries|provider database|license lookup|employee directory)\\b/i.test(titleText) ||\n    /\\/(?:organizations|directory|profiles?|registry|npi|maps\\/org|government|courts?)(?:\\/|[.?_-])/i.test(urlText) || /\\/(?:dentists|doctors|providers)\\/.*(?:dr-|profile|\\d{4,})/i.test(urlText) || /(?:\\/|\\b)(?:browse|directory|directories|listing|listings|search|find-a|find-an|find-stores|providers?|live-map)(?:[\\/.?_-]|\\b)/i.test(urlText) || /\\b(?:directory|directories|listings?|find a|find an|top \\d+|best .* near)\\b/i.test(titleText);\n  const brandMatches = nameTokens.filter((token) => domainText.includes(token));\n  const brandCoverage = nameTokens.length ? brandMatches.length / nameTokens.length : 0;\n  const evidence = candidate.evidence || {};\n  const coverage = Number(evidence.name_token_coverage || 0);\n  const declaredDomainMatch = Boolean(evidence.existing_domain_match || evidence.email_domain_match);\n  // Matching contact details identify a business, not ownership of the hosting website.\n  const directIdentity = declaredDomainMatch &&\n    Boolean(evidence.phone_match) &&\n    nameTokens.every(token => fold(candidate.title).split(' ').includes(token));\n  const titleFold = fold(candidate.title);\n  const fullNameInTitle = Boolean(companyFold && (' ' + titleFold + ' ').includes(' ' + companyFold + ' '));\n  const distinctiveDomainMatches = distinctiveTokens.filter(token => domainText.includes(token));\n  const distinctiveTitleMatch = distinctiveTokens.some(token => titleFold.split(' ').includes(token));\n  const brandedIdentity = coverage >= 0.5 &&\n    (evidence.city_match || evidence.street_number_match || fullNameInTitle) &&\n    ((distinctiveDomainMatches.length > 0 && distinctiveTitleMatch) ||\n      (fullNameInTitle && brandCoverage >= 0.34));\n  const strongIdentity = directIdentity || brandedIdentity;\n  let confidence = Number(candidate.confidence || 0);\n  if (directoryLike) confidence -= 60;\n  confidence += Math.min(24, brandMatches.length * 12);\n  confidence = Math.max(0, Math.min(100, confidence));\n  return { ...candidate, original_confidence: Number(candidate.confidence || 0), confidence, blocked_domain: blockedDomain, directory_like: directoryLike, brand_domain_matches: brandMatches, brand_domain_coverage: Number(brandCoverage.toFixed(2)), strong_identity: strongIdentity, distinctive_domain_matches: distinctiveDomainMatches, full_name_in_title: fullNameInTitle };\n};\nconst candidates = (context.website_identity_evidence_next?.top_candidates || []).map(review).filter(Boolean);\ncandidates.sort((a, b) => b.confidence - a.confidence || Number(a.position || 99) - Number(b.position || 99));\nconst best = candidates.find(candidate => candidate.confidence >= 70 &&\n  candidate.strong_identity && !candidate.directory_like && !candidate.blocked_domain) || null;\nconst resolved = Boolean(best && best.confidence >= 70 && best.strong_identity && !best.directory_like && !best.blocked_domain);\nreturn [{ json: {\n  ...context,\n  resolution_status: resolved ? 'resolved' : 'not_resolved',\n  resolved_website_candidate: resolved ? best.url : '',\n  resolved_domain_candidate: resolved ? best.domain : '',\n  website_resolution_source_next: resolved ? 'google_search_organic_validated' : 'google_search_no_confident_match',\n  website_identity_confidence_next: resolved ? best.confidence : 0,\n  website_identity_evidence_next: {\n    ...(context.website_identity_evidence_next || {}),\n    validation_threshold: 70,\n    directory_results_rejected: true,\n    branded_or_direct_identity_required: true,\n    contact_match_alone_never_proves_website_ownership: true,\n    selected: resolved ? best : null,\n    top_candidates: candidates.slice(0, 10)\n  }\n} }];"
+      },
+      "id": "a0c4207c-ec88-4899-a5fb-f161911ed261",
+      "name": "Validate Official Website Selection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12224,
+        3376
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "00C - Website Verification Worker"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "website_verification_running"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "30"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "575f82c0-b67a-440f-a185-e8396de97baa",
+      "name": "Mark Website Verification Running",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        11904,
+        2672
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_jobs",
+        "limit": 1,
+        "orderBy": "created_at",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "00C - Website Verification Worker"
+            }
+          ]
+        }
+      },
+      "id": "437c178b-7a8d-480e-a65e-f4364b627942",
+      "name": "Get Website Verification Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10176,
+        4240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "limit": 300,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        }
+      },
+      "id": "3ca1a68c-e693-4671-a881-9c275ac2d8d0",
+      "name": "Get Remaining Website Candidate",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10416,
+        4240
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $('Get Website Verification Job').first().json || {};\nconst rows = $input.all().map((item) => item.json || {});\nconst lookupFailed = rows.some((row) => row.error || row.errorCode || row.errorMessage);\nconst activeIntakeStatuses = new Set([\n  'awaiting_website_verification',\n  'website_verification_pending',\n  'website_verification_processing',\n  'website_verification_retry_pending'\n]);\nconst activeVerificationStatuses = new Set([\n  'pending',\n  'resolving',\n  'search_running',\n  'search_polling',\n  'probe_pending',\n  'probe_processing'\n]);\nconst verifiedCount = rows.filter((row) => String(row.website_verification_status || '').trim().toLowerCase() === 'verified').length;\nconst manualReviewCount = rows.filter((row) => String(row.intake_status || '').trim().toLowerCase() === 'manual_review_required').length;\nconst activeRows = rows.filter((row) =>\n  row.id\n  && row.job_id === job.job_id\n  && (\n    activeIntakeStatuses.has(String(row.intake_status || '').trim().toLowerCase())\n    || activeVerificationStatuses.has(String(row.website_verification_status || '').trim().toLowerCase())\n  )\n);\nreturn [{ json: {\n  ...job,\n  verified_candidate_count: verifiedCount,\n  manual_review_candidate_count: manualReviewCount,\n  remaining_candidate_found: activeRows.length > 0,\n  remaining_candidate_count: activeRows.length,\n  completion_lookup_failed: lookupFailed,\n  ready_for_handoff: Boolean(job.job_id && !lookupFailed && activeRows.length === 0)\n} }];"
+      },
+      "id": "e025326e-1872-4d50-9792-0405290d8adb",
+      "name": "Evaluate Website Job Completion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10656,
+        4240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00c00000-0000-4000-8000-000000000071",
+              "leftValue": "={{ $json.ready_for_handoff === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "314a7409-34b6-43be-992e-12cb3af96878",
+      "name": "Website Job Ready For Handoff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        10896,
+        4240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "00C - Website Verification Worker"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "lead_intake_queued"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "40"
+            },
+            {
+              "fieldId": "next_workflow",
+              "fieldValue": "01 - Lead Intake & Data Cleaning"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "verified_leads",
+              "fieldValue": "={{ $json.verified_candidate_count }}"
+            }
+          ]
+        }
+      },
+      "id": "839b6b11-3b5f-4019-bf70-692d0a251ee0",
+      "name": "Queue Lead Intake Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        11136,
+        4240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $json || {};\nreturn [{ json: {\n  job_id: row.job_id,\n  event_type: 'website_verification_completed',\n  event_status: 'queued',\n  event_stage: 'lead_intake_queued',\n  event_severity: 'info',\n  event_error_code: '',\n  event_message: 'Website verification finished; lead intake and data cleaning queued.',\n  event_payload: { progress_percent: 40, next_workflow: '01 - Lead Intake & Data Cleaning' }\n} }];"
+      },
+      "id": "b90a41dc-f39d-45a8-b895-526be3ae5698",
+      "name": "Build Website Batch Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11376,
+        4240
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.event_status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.event_stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.event_severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.event_error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload || {} }}"
+            }
+          ]
+        }
+      },
+      "id": "e7a42b5f-e3a8-44cb-9886-145a0b69c576",
+      "name": "Log Website Batch Event",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        11616,
+        4240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "search_running"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "search_polling"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ '00C-poll-' + $execution.id }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "aa1c65e6-018a-4eb0-8f56-d34816543abc",
+      "name": "Claim Website Search Poll",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10304,
+        3456
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "probe_pending"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "probe_processing"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ '00C-probe-' + $execution.id }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "faaaa789-6f6a-427d-a7fd-9af773ae6b1f",
+      "name": "Claim Website Probe",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10304,
+        3888
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "orderBy": "updated_at",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            }
+          ]
+        }
+      },
+      "id": "67678bb3-ce25-4c07-82ad-115756652507",
+      "name": "Get Stale Website Locks",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10176,
+        4320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cutoff = Date.now() - 10 * 60 * 1000;\nconst recoverable = new Set(['resolving', 'search_polling', 'probe_processing']);\nreturn $input.all().filter((item) => {\n  const row = item.json || {};\n  const status = String(row.website_verification_status || '').toLowerCase();\n  const timestamp = Date.parse(row.website_verification_locked_at || row.updated_at || '');\n  return row.id && recoverable.has(status) && Number.isFinite(timestamp) && timestamp < cutoff;\n}).map((item) => {\n  const row = item.json || {};\n  const before = String(row.website_verification_status || '').toLowerCase();\n  const verificationNext = before === 'search_polling' ? 'search_running' : (before === 'probe_processing' ? 'probe_pending' : 'pending');\n  const intakeNext = before === 'resolving' ? 'website_verification_retry_pending' : 'website_verification_processing';\n  return { json: { ...row, stale_verification_status: before, stale_verification_worker_id: row.website_verification_locked_by, verification_recovery_status: verificationNext, intake_recovery_status: intakeNext } };\n});"
+      },
+      "id": "5634f4f6-2606-4b51-9b4d-a0376a83dd5b",
+      "name": "Select Stale Website Locks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10416,
+        4320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "website_verification_status",
+              "condition": "eq",
+              "keyValue": "={{ $json.stale_verification_status }}"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verification_processing"
+            },
+            {
+              "keyName": "website_verification_locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.stale_verification_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "={{ $json.verification_recovery_status }}"
+            },
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "={{ $json.intake_recovery_status }}"
+            },
+            {
+              "fieldId": "website_verification_locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "website_verification_error_code",
+              "fieldValue": "STALE_VERIFICATION_LOCK_RECOVERED"
+            },
+            {
+              "fieldId": "website_verification_error",
+              "fieldValue": "A stale verification lock was released automatically."
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "bab88697-6190-4be5-85a8-0c869c1474ee",
+      "name": "Release Stale Website Lock",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        10656,
+        4320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Website Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Running Website Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Pending Website Probe",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Website Verification Job",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Stale Website Locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Website Candidates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Running Website Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Pending Website Probe",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Website Verification Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Website Candidates": {
+      "main": [
+        [
+          {
+            "node": "Select Due Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Due Candidate": {
+      "main": [
+        [
+          {
+            "node": "Candidate Due?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Candidate Due?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Verification Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Verification Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim Website Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Website Candidate": {
+      "main": [
+        [
+          {
+            "node": "Resolve Verification Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Verification Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Existing URL Candidate?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mark Website Verification Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existing URL Candidate?": {
+      "main": [
+        [
+          {
+            "node": "Queue Existing Website Probe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Start Apify Google Search Actor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Existing Website Probe": {
+      "main": [
+        [
+          {
+            "node": "Build Existing URL Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Existing URL Event": {
+      "main": [
+        [
+          {
+            "node": "Log Existing URL Selected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Apify Google Search Actor": {
+      "main": [
+        [
+          {
+            "node": "Parse Search Actor Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Search Actor Start": {
+      "main": [
+        [
+          {
+            "node": "Search Actor Started?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Actor Started?": {
+      "main": [
+        [
+          {
+            "node": "Mark Search Running",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Search Running": {
+      "main": [
+        [
+          {
+            "node": "Build Search Started Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Started Event": {
+      "main": [
+        [
+          {
+            "node": "Log Website Search Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Verification Failure": {
+      "main": [
+        [
+          {
+            "node": "Update Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Verification Failure": {
+      "main": [
+        [
+          {
+            "node": "Build Failure Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Failure Event": {
+      "main": [
+        [
+          {
+            "node": "Log Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Running Website Search": {
+      "main": [
+        [
+          {
+            "node": "Claim Website Search Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Website Search Poll": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search Poll": {
+      "main": [
+        [
+          {
+            "node": "Poll Apify Search Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Apify Search Run": {
+      "main": [
+        [
+          {
+            "node": "Parse Search Run Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Search Run Status": {
+      "main": [
+        [
+          {
+            "node": "Search Run Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Run Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Search Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Still Running?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Still Running?": {
+      "main": [
+        [
+          {
+            "node": "Update Search Heartbeat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Search Dataset": {
+      "main": [
+        [
+          {
+            "node": "Parse Search Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Search Dataset": {
+      "main": [
+        [
+          {
+            "node": "Search Dataset OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Dataset OK?": {
+      "main": [
+        [
+          {
+            "node": "Select Official Website",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Official Website": {
+      "main": [
+        [
+          {
+            "node": "Validate Official Website Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Official Website Selection": {
+      "main": [
+        [
+          {
+            "node": "Official Website Resolved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Official Website Resolved?": {
+      "main": [
+        [
+          {
+            "node": "Queue Resolved Website Probe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Website Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Resolved Website Probe": {
+      "main": [
+        [
+          {
+            "node": "Build Website Resolved Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Website Resolved Event": {
+      "main": [
+        [
+          {
+            "node": "Log Official Website Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Website Manual Review": {
+      "main": [
+        [
+          {
+            "node": "Build Manual Review Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Manual Review Event": {
+      "main": [
+        [
+          {
+            "node": "Log Manual Review Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Website Probe": {
+      "main": [
+        [
+          {
+            "node": "Claim Website Probe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Website Probe": {
+      "main": [
+        [
+          {
+            "node": "Prepare Website Probe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Website Probe": {
+      "main": [
+        [
+          {
+            "node": "Probe URL Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe URL Valid?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Website Homepage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Website Homepage": {
+      "main": [
+        [
+          {
+            "node": "Analyze Website Homepage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Website Homepage": {
+      "main": [
+        [
+          {
+            "node": "Probe Retryable Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe Retryable Error?": {
+      "main": [
+        [
+          {
+            "node": "Build Verification Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Website Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Website Verification": {
+      "main": [
+        [
+          {
+            "node": "Build Website Verification Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Website Verification Event": {
+      "main": [
+        [
+          {
+            "node": "Log Website Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Website Verification Job": {
+      "main": [
+        [
+          {
+            "node": "Get Remaining Website Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Remaining Website Candidate": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Website Job Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Website Job Completion": {
+      "main": [
+        [
+          {
+            "node": "Website Job Ready For Handoff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Website Job Ready For Handoff?": {
+      "main": [
+        [
+          {
+            "node": "Queue Lead Intake Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Lead Intake Job": {
+      "main": [
+        [
+          {
+            "node": "Build Website Batch Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Website Batch Event": {
+      "main": [
+        [
+          {
+            "node": "Log Website Batch Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Stale Website Locks": {
+      "main": [
+        [
+          {
+            "node": "Select Stale Website Locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Stale Website Locks": {
+      "main": [
+        [
+          {
+            "node": "Release Stale Website Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "93b3332c23b7d7da4a8ac7a2d25335d0b65ef3b219af7b4aff014f84741d63fa"
+  },
+  "nodeGroups": [],
+  "id": "gebwXULgyvwFaosN",
+  "tags": []
+}

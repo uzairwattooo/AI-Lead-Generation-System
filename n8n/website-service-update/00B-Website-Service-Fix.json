@@ -1,0 +1,2895 @@
+{
+  "name": "00B - Google Maps Discovery Worker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "b1a9b346-34fa-44b4-8667-706a1624aa1c",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        3808,
+        4784
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ce2bac9c-8c8e-42aa-8dfe-659f6676a382",
+      "name": "Manual Test",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        4016,
+        4784
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_jobs",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "00B - Google Maps Discovery Worker"
+            }
+          ]
+        }
+      },
+      "id": "13a496cb-6d5d-4bf5-a9d7-572a691fddb6",
+      "name": "Get Next Queued Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4608,
+        4368
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "645d4ea4-8c36-4c47-81e4-9428edc5a052",
+              "leftValue": "={{ (!$json.next_attempt_at || new Date($json.next_attempt_at).getTime() <= Date.now()) && Number($json.attempt_count || 0) < Number($json.max_attempts || 3) && $json.next_workflow === '00B - Google Maps Discovery Worker' && !$json.completed_at }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6cc019e7-0a91-4d34-a945-992c50aefcc9",
+      "name": "Queued Job Due?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4736,
+        4368
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json || {};\n\nconst clean = (value) =>\n  String(value ?? '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\nconst requested = Math.max(\n  1,\n  Math.min(200, Number(job.requested_leads || 1))\n);\n\nconst searchLimit = Math.min(\n  300,\n  Math.max(requested, Math.ceil(requested * 1.5))\n);\n\n// Build location and remove duplicate parts such as:\n// Dallas, Texas, United States, United States\nconst rawLocation = clean(job.location);\n\nconst locationValues = rawLocation\n  ? [rawLocation, job.country]\n  : [job.city, job.region, job.country];\n\nconst seenLocationParts = new Set();\n\nconst locationParts = locationValues\n  .flatMap((value) => clean(value).split(','))\n  .map((value) => clean(value))\n  .filter(Boolean)\n  .filter((value) => {\n    const normalized = value.toLowerCase();\n\n    if (seenLocationParts.has(normalized)) {\n      return false;\n    }\n\n    seenLocationParts.add(normalized);\n    return true;\n  });\n\nconst locationQuery = locationParts.join(', ');\n\nconst attemptCount = Number(job.attempt_count || 0) + 1;\nconst workerId = `00B-${$execution.id}`;\n\nreturn {\n  json: {\n    ...job,\n    worker_id: workerId,\n    attempt_count_next: attemptCount,\n    claim_started_at: new Date().toISOString(),\n    location_query: locationQuery,\n\n    apify_input: {\n      searchStringsArray: [clean(job.category)],\n      locationQuery,\n      maxCrawledPlacesPerSearch: searchLimit,\n      language: clean(job.language || 'en').toLowerCase(),\n      searchMatching: 'all',\n      website: 'allPlaces',\n      skipClosedPlaces: true,\n      scrapePlaceDetailPage: false,\n      scrapeContacts: true,\n\n      scrapeSocialMediaProfiles: {\n        facebooks: false,\n        instagrams: false,\n        youtubes: false,\n        tiktoks: false,\n        twitters: false\n      },\n\n      maximumLeadsEnrichmentRecords: 0,\n      verifyLeadsEnrichmentEmails: false,\n      maxReviews: 0,\n      scrapeReviewsPersonalData: false,\n      maxImages: 0,\n      scrapeImageAuthors: false,\n      includeWebResults: false,\n      scrapeDirectories: false,\n      enableCompetitorAnalysis: false,\n      maxCompetitorsToAnalyze: 0\n    }\n  }\n};"
+      },
+      "id": "c05fd1ee-b7b4-4c1a-a578-687fc88fdb24",
+      "name": "Prepare Apify Actor Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4928,
+        4368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "queued"
+            },
+            {
+              "keyName": "next_workflow",
+              "condition": "eq",
+              "keyValue": "00B - Google Maps Discovery Worker"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "starting"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "starting_google_maps_collection"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "10"
+            },
+            {
+              "fieldId": "attempt_count",
+              "fieldValue": "={{ $json.attempt_count_next }}"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ $json.claim_started_at }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ $json.worker_id }}"
+            },
+            {
+              "fieldId": "started_at",
+              "fieldValue": "={{ $json.started_at || $json.claim_started_at }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ null }}"
+            }
+          ]
+        }
+      },
+      "id": "3ea821a4-5114-4a41-b6d6-6f7dfebf1165",
+      "name": "Claim Queued Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5104,
+        4368
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const original = $('Prepare Apify Actor Start').first().json;\nconst updated = $json || {};\nconst message = [\n  updated.error?.message,\n  updated.error?.description,\n  updated.errorMessage,\n  updated.message,\n  updated.description\n].filter(Boolean).join(' | ');\nconst hasError = Boolean(\n  updated.error ||\n  updated.errorMessage ||\n  (updated.httpCode && Number(updated.httpCode) >= 400) ||\n  (updated.code && String(updated.code).toLowerCase().startsWith('pgrst'))\n);\nconst claimSucceeded = !hasError && Boolean(updated.id && updated.job_id);\nreturn {\n  json: {\n    ...original,\n    ...(claimSucceeded ? updated : {}),\n    claim_succeeded: claimSucceeded,\n    claim_error: hasError ? message.slice(0, 1500) : (claimSucceeded ? '' : 'Job was already claimed by another execution.')\n  }\n};"
+      },
+      "id": "7b6913b5-6610-4a8b-94e6-9f666d752ce7",
+      "name": "Resolve Job Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5344,
+        4368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "62aa6bf6-51ae-4d70-8392-3a13ffcf1011",
+              "leftValue": "={{ $json.claim_succeeded }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1978b03-358f-4363-bd90-f8e9ef54645b",
+      "name": "Job Claim Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5600,
+        4368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/compass~crawler-google-places/runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "waitForFinish",
+              "value": "0"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.apify_input }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 90000
+        }
+      },
+      "id": "1e756a22-549b-4420-bf37-22cdb2a4adff",
+      "name": "Start Apify Google Maps Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5856,
+        4368
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X0MTSp5xTNWRoD55",
+          "name": "CodeNativeX Apify Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $('Resolve Job Claim').first().json;\nconst response = $json || {};\nconst body = response.body ?? response;\nconst data = body?.data ?? body;\nconst httpStatus = Number(response.statusCode || response.status || 0);\nconst message = [\n  body?.error?.message,\n  body?.error?.type,\n  response.error?.message,\n  response.errorMessage,\n  response.message\n].filter(Boolean).join(' | ');\nconst started = Boolean(data && data.id && data.defaultDatasetId) && (!httpStatus || (httpStatus >= 200 && httpStatus < 300));\nreturn {\n  json: {\n    ...job,\n    actor_started: started,\n    apify_run_id: started ? String(data.id) : '',\n    apify_dataset_id: started ? String(data.defaultDatasetId) : '',\n    apify_status: started ? String(data.status || 'READY') : 'START_FAILED',\n    actor_started_at: started ? String(data.startedAt || new Date().toISOString()) : '',\n    actor_start_error: started ? '' : (message || `Apify Actor start failed with HTTP ${httpStatus || 'unknown'}`).slice(0, 1500)\n  }\n};"
+      },
+      "id": "35603a51-db81-43f6-b939-f1a6c848e8df",
+      "name": "Parse Apify Actor Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6096,
+        4368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5ace8246-5520-474b-8ae1-dbd91ed21014",
+              "leftValue": "={{ $json.actor_started }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3745b291-5405-4ca2-9a28-76c1ec0a133a",
+      "name": "Apify Actor Started?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6352,
+        4368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "collecting"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "google_maps_collecting"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "15"
+            },
+            {
+              "fieldId": "apify_run_id",
+              "fieldValue": "={{ $json.apify_run_id }}"
+            },
+            {
+              "fieldId": "apify_dataset_id",
+              "fieldValue": "={{ $json.apify_dataset_id }}"
+            },
+            {
+              "fieldId": "apify_status",
+              "fieldValue": "={{ $json.apify_status }}"
+            },
+            {
+              "fieldId": "apify_started_at",
+              "fieldValue": "={{ $json.actor_started_at || $now }}"
+            },
+            {
+              "fieldId": "next_attempt_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "646be2cc-3473-49a2-bcd7-5ef3ea4207dc",
+      "name": "Mark Job Collecting",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6608,
+        4256
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json || {};\nreturn {\n  json: {\n    job_id: job.job_id,\n    event_type: 'apify_run_started',\n    status: job.status || 'collecting',\n    stage: job.current_stage || 'google_maps_collecting',\n    severity: 'info',\n    error_code: '',\n    event_message: 'Apify Google Maps Actor started successfully.',\n    event_payload: {\n      apify_run_id: job.apify_run_id,\n      apify_dataset_id: job.apify_dataset_id,\n      attempt_count: job.attempt_count\n    }\n  }\n};"
+      },
+      "id": "be55111c-fd3e-408c-925f-db55a6ddab61",
+      "name": "Build Actor Started Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6848,
+        4256
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload }}"
+            }
+          ]
+        }
+      },
+      "id": "6812166b-5883-4c50-9097-6f24ce35c04b",
+      "name": "Log Actor Started",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        7104,
+        4256
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json || {};\nconst attempts = Number(input.attempt_count || input.attempt_count_next || 1);\nconst maxAttempts = Number(input.max_attempts || 3);\nconst willRetry = attempts < maxAttempts;\nconst delayMinutes = attempts <= 1 ? 1 : (attempts === 2 ? 5 : 15);\nconst nextAttempt = new Date(Date.now() + delayMinutes * 60000).toISOString();\nconst actorStatus = String(input.apify_status || '').toUpperCase();\nconst errorCode = input.actor_start_error\n  ? 'APIFY_START_FAILED'\n  : (actorStatus ? `APIFY_RUN_${actorStatus.replace(/[^A-Z0-9]+/g, '_')}` : 'APIFY_RUN_FAILED');\nconst errorMessage = String(\n  input.actor_start_error ||\n  input.apify_error ||\n  input.poll_error ||\n  `Apify Actor ended with status ${actorStatus || 'unknown'}.`\n).slice(0, 1500);\nreturn {\n  json: {\n    ...input,\n    retry_status: willRetry ? 'queued' : 'failed',\n    retry_stage: willRetry ? 'retry_scheduled' : 'google_maps_collection_failed',\n    next_attempt_at: willRetry ? nextAttempt : null,\n    error_code: errorCode,\n    error_message: errorMessage,\n    retry_event_type: willRetry ? 'job_retry_scheduled' : 'job_failed',\n    retry_severity: willRetry ? 'warning' : 'error',\n    retry_message: willRetry\n      ? `Attempt ${attempts} failed. Retry scheduled in ${delayMinutes} minute(s).`\n      : `Lead discovery failed after ${attempts} attempt(s).`\n  }\n};"
+      },
+      "id": "13edb4c1-5ec6-48e4-9245-d73c92fb5ec3",
+      "name": "Build Retry or Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6608,
+        4496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.retry_status }}"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "={{ $json.retry_stage }}"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "={{ $json.retry_status === 'failed' ? 100 : 10 }}"
+            },
+            {
+              "fieldId": "next_attempt_at",
+              "fieldValue": "={{ $json.next_attempt_at }}"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "apify_status",
+              "fieldValue": "={{ $json.apify_status || 'START_FAILED' }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.error_code }}"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ $json.error_message }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ $json.retry_status === 'failed' ? $now : null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "2dfcfcaf-ac70-4382-a919-c68cc513e4fc",
+      "name": "Update Job Retry or Failure",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6848,
+        4496
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json || {};\nreturn {\n  json: {\n    job_id: job.job_id,\n    event_type: job.status === 'failed' ? 'job_failed' : 'job_retry_scheduled',\n    status: job.status,\n    stage: job.current_stage,\n    severity: job.status === 'failed' ? 'error' : 'warning',\n    error_code: job.error_code || 'APIFY_RUN_FAILED',\n    event_message: job.error_message || 'Apify run failed.',\n    event_payload: {\n      attempt_count: job.attempt_count,\n      max_attempts: job.max_attempts,\n      next_attempt_at: job.next_attempt_at,\n      apify_status: job.apify_status\n    }\n  }\n};"
+      },
+      "id": "a86a0e7d-fe1d-4e26-95a0-42d46e22e3ca",
+      "name": "Build Retry Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7104,
+        4496
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload }}"
+            }
+          ]
+        }
+      },
+      "id": "b0967bb7-ba63-43ce-9229-08c8b4723c1c",
+      "name": "Log Retry or Failure",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        7344,
+        4496
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_jobs",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collecting"
+            }
+          ]
+        }
+      },
+      "id": "9862afc9-712e-4a55-a830-83cc28512f4b",
+      "name": "Get Collecting Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4608,
+        4768
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json || {};\nreturn {\n  json: {\n    ...job,\n    poll_requested_at: new Date().toISOString(),\n    collection_poll_worker_id: String(job.locked_by || ('00B-poll-' + $execution.id)),\n    poll_url: `https://api.apify.com/v2/actor-runs/${encodeURIComponent(String(job.apify_run_id || 'missing'))}`\n  }\n};"
+      },
+      "id": "80f0eed4-ec4a-4a38-af7c-7186fbc615a5",
+      "name": "Prepare Actor Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.poll_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 45000
+        }
+      },
+      "id": "f313c208-78ca-4765-93cf-ff518db7340e",
+      "name": "Poll Apify Actor Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5104,
+        4768
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X0MTSp5xTNWRoD55",
+          "name": "CodeNativeX Apify Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $('Prepare Actor Poll').first().json;\nconst response = $json || {};\nconst body = response.body ?? response;\nconst data = body?.data ?? body;\nconst httpStatus = Number(response.statusCode || response.status || 0);\nconst apiError = Boolean(\n  response.error ||\n  response.errorMessage ||\n  (httpStatus && (httpStatus < 200 || httpStatus >= 300)) ||\n  !data ||\n  !data.status\n);\nconst status = String(data?.status || 'UNKNOWN').toUpperCase();\nconst terminalFailures = new Set(['FAILED', 'TIMED-OUT', 'ABORTED']);\nlet runState = 'running';\nif (apiError) runState = 'poll_error';\nelse if (status === 'SUCCEEDED') runState = 'succeeded';\nelse if (terminalFailures.has(status)) runState = 'terminal_failure';\nconst message = [\n  body?.error?.message,\n  body?.error?.type,\n  response.error?.message,\n  response.errorMessage,\n  data?.statusMessage,\n  response.message\n].filter(Boolean).join(' | ');\nreturn {\n  json: {\n    ...job,\n    apify_status: status,\n    apify_dataset_id: String(data?.defaultDatasetId || job.apify_dataset_id || ''),\n    apify_finished_at: data?.finishedAt || null,\n    run_state: runState,\n    poll_error: apiError ? (message || `Apify poll failed with HTTP ${httpStatus || 'unknown'}`).slice(0, 1500) : '',\n    apify_error: terminalFailures.has(status) ? (message || `Apify run ended with status ${status}`).slice(0, 1500) : ''\n  }\n};"
+      },
+      "id": "2eb147f6-1aee-40c2-96d9-7a85a84f5ad1",
+      "name": "Parse Apify Run Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5344,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c35b66c2-4b4d-4a6e-a33c-3878a8072026",
+              "leftValue": "={{ $json.run_state }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "48bb380b-551e-4583-b659-849794c2284e",
+      "name": "Actor Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5600,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3043c972-379c-465c-a72c-f3db34372027",
+              "leftValue": "={{ $json.run_state }}",
+              "rightValue": "running",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dfc7dafc-6ccd-4d30-86e0-d5bd4c06f815",
+      "name": "Actor Still Running?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5856,
+        4912
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c9f72891-8e68-4b99-a5ac-3f3bdcf72028",
+              "leftValue": "={{ $json.run_state }}",
+              "rightValue": "poll_error",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8399ba0f-5e5f-4450-a68f-efa746a418a6",
+      "name": "Poll API Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6096,
+        5024
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collection_polling"
+            },
+            {
+              "keyName": "locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.collection_poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "apify_status",
+              "fieldValue": "={{ $json.apify_status }}"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "google_maps_collecting"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "20"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "collecting"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ null }}"
+            }
+          ]
+        }
+      },
+      "id": "ff4e9276-9551-4405-a1c6-8a973765b1bd",
+      "name": "Update Collection Heartbeat",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6096,
+        4832
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collection_polling"
+            },
+            {
+              "keyName": "locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.collection_poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "google_maps_poll_retry"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "APIFY_POLL_FAILED"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ $json.poll_error }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "collecting"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ null }}"
+            }
+          ]
+        }
+      },
+      "id": "c4b47d3f-5b68-457a-826a-3463feff0a1c",
+      "name": "Record Poll Warning",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6352,
+        4976
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.apify.com/v2/datasets/' + encodeURIComponent($json.apify_dataset_id) + '/items' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "clean",
+              "value": "true"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "limit",
+              "value": "={{ Math.min(500, Math.max(1, Number($json.requested_leads || 1) * 2)) }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 90000
+        }
+      },
+      "id": "56a9b149-bcf7-4aa4-9951-df6a604e8347",
+      "name": "Fetch Apify Dataset Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5856,
+        4672
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "X0MTSp5xTNWRoD55",
+          "name": "CodeNativeX Apify Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $('Parse Apify Run Status').first().json;\nconst response = $json || {};\nconst body = response.body ?? response;\nlet items = [];\nif (Array.isArray(body)) items = body;\nelse if (Array.isArray(body?.data)) items = body.data;\nelse if (Array.isArray(response.data)) items = response.data;\nconst httpStatus = Number(response.statusCode || response.status || 0);\nconst message = [\n  body?.error?.message,\n  response.error?.message,\n  response.errorMessage,\n  response.message\n].filter(Boolean).join(' | ');\nconst fetchOk = (!httpStatus || (httpStatus >= 200 && httpStatus < 300)) && Array.isArray(items);\nreturn {\n  json: {\n    ...job,\n    dataset_fetch_ok: fetchOk,\n    dataset_items: fetchOk ? items : [],\n    dataset_fetch_error: fetchOk ? '' : (message || `Dataset fetch failed with HTTP ${httpStatus || 'unknown'}`).slice(0, 1500)\n  }\n};"
+      },
+      "id": "80e24afe-4e27-4434-bf85-c79c52777a2c",
+      "name": "Parse Dataset Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6096,
+        4672
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0a6a1588-e111-4f7e-8f5e-f484e7fe2033",
+              "leftValue": "={{ $json.dataset_fetch_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9d57ed4e-2ee1-4ffb-94d4-082391bfe03e",
+      "name": "Dataset Fetch OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6352,
+        4672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $input.first()?.json || {};\nconst rows = Array.isArray(context.dataset_items) ? context.dataset_items : [];\nconst clean = (value, max = 1000) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);\n// No URL global dependency: compatible with n8n Code-node sandboxes.\nconst normalizeWebsite = (value) => {\n  if (Array.isArray(value)) {\n    for (const item of value) { const result = normalizeWebsite(item); if (result.website) return result; }\n    return { website: '', domain: '' };\n  }\n  if (value && typeof value === 'object') return normalizeWebsite(value.url || value.uri || value.website || value.value || '');\n  let raw = String(value ?? '').trim().replace(/&amp;/gi, '&');\n  if (!raw || /[\\s\\\\<>\"'`]/.test(raw)) return { website: '', domain: '' };\n  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\\/\\//i.test(raw)) return { website: '', domain: '' };\n  if (raw.startsWith('//')) raw = 'https:' + raw;\n  const candidate = /^https?:\\/\\//i.test(raw) ? raw : 'https://' + raw;\n  const match = candidate.match(/^(https?):\\/\\/([^/?#:]+)(?::(\\d{1,5}))?([/?#].*)?$/i);\n  if (!match || match[2].includes('@')) return { website: '', domain: '' };\n  const host = match[2].toLowerCase().replace(/\\.$/, '');\n  if (host.length > 253 || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/i.test(host)) return { website: '', domain: '' };\n  if (match[3] && !['80', '443'].includes(match[3])) return { website: '', domain: '' };\n  const domain = host.replace(/^www\\./, '');\n  const blockedSites = ['google.com', 'google.co.uk', 'maps.app.goo.gl', 'goo.gl', 'g.page', 'googleusercontent.com', 'facebook.com', 'fb.com', 'instagram.com', 'linkedin.com', 'yelp.com', 'youtube.com', 'tiktok.com', 'twitter.com', 'x.com', 'yellowpages.com', 'mapquest.com', 'tripadvisor.com', 'bbb.org', 'chamberofcommerce.com', 'manta.com', 'angi.com', 'thumbtack.com', 'healthgrades.com', 'zocdoc.com', 'webmd.com', 'gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com'];\n  if (blockedSites.some(site => domain === site || domain.endsWith('.' + site))) return { website: '', domain: '' };\n  let suffix = (match[4] || '/').split('#')[0] || '/';\n  if (suffix.startsWith('?')) suffix = '/' + suffix;\n  return { website: match[1].toLowerCase() + '://' + host + (match[3] ? ':' + match[3] : '') + suffix, domain };\n};\nconst websiteFromPlace = row => {\n  for (const value of [row.website, row.websiteUri, row.websiteUrl, row.website_url, row.webSite, row.websites, row.websiteDetails]) {\n    const result = normalizeWebsite(value);\n    if (result.website) return result;\n  }\n  return { website: '', domain: '' };\n};\nconst routeWebsiteService = (requested, website) => {\n  const service = String(requested || 'Website Redesign').trim();\n  const websiteServices = ['Website Redesign', 'New Website', 'Web Development', 'SEO Improvement', 'Performance Optimization'];\n  if (!websiteServices.includes(service)) return service;\n  if (!website) return 'New Website';\n  return ['New Website', 'Web Development'].includes(service) ? 'Website Redesign' : service;\n};\n\nconst extractEmail = (row) => {\n  const candidates = [];\n  const add = (value) => {\n    if (Array.isArray(value)) return value.forEach(add);\n    if (value && typeof value === 'object') return add(value.email ?? value.address ?? value.value);\n    const text = clean(value, 500).toLowerCase();\n    const matches = text.match(/[a-z0-9.!#$%&'*+/=?^_\\`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/gi) || [];\n    candidates.push(...matches);\n  };\n  add(row.email);\n  add(row.emails);\n  add(row.contactEmails);\n  return [...new Set(candidates)].find((email) => email.length <= 254) || '';\n};\nconst normalizePhone = (value) => {\n  const raw = clean(value, 80);\n  if (!raw) return '';\n  let candidate = raw.replace(/[^0-9+]/g, '');\n  if (candidate.startsWith('00')) candidate = '+' + candidate.slice(2);\n  const digits = candidate.replace(/\\D/g, '');\n  return digits.length >= 7 && digits.length <= 15 ? candidate : '';\n};\nconst keyPart = (value) => clean(value, 300).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');\nconst contactQuality = (row) => {\n  const website = websiteFromPlace(row || {}).website;\n  const email = extractEmail(row || {});\n  const phone = normalizePhone(row?.phoneUnformatted || row?.phone || (Array.isArray(row?.phones) ? row.phones[0] : row?.phones));\n  const rating = Number(row?.totalScore || row?.rating || 0) || 0;\n  const reviews = Number(row?.reviewsCount || row?.userRatingCount || 0) || 0;\n  return (email ? 400000 : 0) + (website ? 800000 : 0) + (phone ? 200000 : 0) + Math.round(rating * 1000) + Math.min(reviews, 999);\n};\nconst seen = new Set();\nconst output = [];\nlet rejected = 0;\nlet internalDuplicates = 0;\nconst requested = Math.max(1, Number(context.requested_leads || 1));\nconst orderedRows = [...rows].sort((a, b) => contactQuality(b) - contactQuality(a));\n\nfor (const row of orderedRows) {\n  if (output.length >= requested) break;\n  if (!row || typeof row !== 'object') {\n    rejected++;\n    continue;\n  }\n\n  const companyName = clean(row.title || row.name, 300);\n  if (!companyName) {\n    rejected++;\n    continue;\n  }\n\n  const placeId = clean(row.placeId || row.place_id || row.cid || row.fid, 300);\n  const normalizedWebsite = websiteFromPlace(row);\n  const email = extractEmail(row);\n  const phone = normalizePhone(row.phoneUnformatted || row.phone || (Array.isArray(row.phones) ? row.phones[0] : row.phones));\n  const address = clean(row.address || row.formattedAddress, 600);\n  const city = clean(row.city || context.location, 150);\n  const category = clean(row.categoryName || (Array.isArray(row.categories) ? row.categories[0] : '') || context.category, 150);\n  const sourceUrl = clean(row.url || row.googleMapsUri || row.searchPageUrl, 2000);\n  const canonicalLeadKey = placeId\n    ? 'place:' + placeId\n    : (normalizedWebsite.domain\n      ? 'domain:' + normalizedWebsite.domain\n      : (phone ? 'phone:' + phone.replace(/\\D/g, '') : 'business:' + keyPart(companyName) + '|' + keyPart(address)));\n\n  if (seen.has(canonicalLeadKey)) {\n    internalDuplicates++;\n    continue;\n  }\n  seen.add(canonicalLeadKey);\n\n  const needSignal = normalizedWebsite.website\n    ? 'Public Google Maps business available for human website review'\n    : 'No official website listed in this result; public website search and human review pending';\n\n  output.push({\n    json: {\n      candidate_present: true,\n      job_id: context.job_id,\n      collection_poll_worker_id: context.collection_poll_worker_id,\n      lead_key: canonicalLeadKey,\n      company_name: companyName,\n      website: normalizedWebsite.website,\n      domain: normalizedWebsite.domain,\n      contact_name: '',\n      job_title: '',\n      email,\n      phone,\n      country: clean(context.country || row.countryCode, 100),\n      city,\n      industry: category,\n      source: 'google_maps_apify',\n      source_url: sourceUrl,\n      source_place_id: placeId,\n      need_signal: needSignal,\n      service_interest: routeWebsiteService(context.service_interest, normalizedWebsite.website),\n      address,\n      rating: Number(row.totalScore || row.rating || 0) || 0,\n      review_count: Number(row.reviewsCount || row.userRatingCount || 0) || 0,\n      is_recommended: false,\n      recommendation_rank: null,\n      raw_payload: {\n        title: companyName,\n        category,\n        address,\n        city,\n        state: clean(row.state, 100),\n        countryCode: clean(row.countryCode, 10),\n        website: normalizedWebsite.website,\n        source_website: clean(typeof row.website === 'string' ? row.website : row.websiteUri || row.websiteUrl || '', 2000),\n        requested_service: clean(context.service_interest || 'Website Redesign', 150),\n        human_review_only: true,\n        phone,\n        email,\n        placeId,\n        rating: Number(row.totalScore || row.rating || 0) || 0,\n        reviewsCount: Number(row.reviewsCount || row.userRatingCount || 0) || 0,\n        url: sourceUrl,\n        businessStatus: clean(row.businessStatus || row.status, 100),\n        permanentlyClosed: row.permanentlyClosed === true,\n        temporarilyClosed: row.temporarilyClosed === true,\n        scrapedAt: row.scrapedAt || null,\n        canonical_lead_key: canonicalLeadKey,\n        contact_availability: {\n          has_email: Boolean(email),\n          has_phone: Boolean(phone),\n          has_website: Boolean(normalizedWebsite.website)\n        }\n      },\n      stats: {\n        raw_result_count: rows.length,\n        normalized_count: 0,\n        rejected_count: rejected,\n        internal_duplicate_count: internalDuplicates,\n        requested_leads: requested\n      }\n    }\n  });\n}\n\nfor (let index = 0; index < output.length; index++) {\n  const item = output[index];\n  item.json.is_recommended = index < 2;\n  item.json.recommendation_rank = index < 2 ? index + 1 : null;\n  item.json.stats.normalized_count = output.length;\n  item.json.stats.rejected_count = rejected;\n  item.json.stats.internal_duplicate_count = internalDuplicates;\n}\n\nif (!output.length) {\n  return [{\n    json: {\n      candidate_present: false,\n      job_id: context.job_id,\n      collection_poll_worker_id: context.collection_poll_worker_id,\n      requested_leads: requested,\n      service_interest: context.service_interest,\n      stats: {\n        raw_result_count: rows.length,\n        normalized_count: 0,\n        rejected_count: rejected,\n        internal_duplicate_count: internalDuplicates,\n        requested_leads: requested\n      }\n    }\n  }];\n}\nreturn output;"
+      },
+      "id": "179b10df-a725-4b93-bcd2-aa1b097c4aac",
+      "name": "Normalize & Deduplicate Places",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6608,
+        4608
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "63e99221-29b4-4e69-b365-738940ee2035",
+              "leftValue": "={{ $json.candidate_present }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4f355ad4-7bc9-42c6-80b2-03d0e9acfa0b",
+      "name": "Any Candidate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6752,
+        4640
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "755c8159-291c-4983-9157-ea684af1d701",
+      "name": "Loop Over Candidates",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        7088,
+        4624
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_candidates",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id }}"
+            },
+            {
+              "fieldId": "lead_key",
+              "fieldValue": "={{ $json.lead_key }}"
+            },
+            {
+              "fieldId": "company_name",
+              "fieldValue": "={{ $json.company_name }}"
+            },
+            {
+              "fieldId": "website",
+              "fieldValue": "={{ $json.website || null }}"
+            },
+            {
+              "fieldId": "domain",
+              "fieldValue": "={{ $json.domain || null }}"
+            },
+            {
+              "fieldId": "contact_name",
+              "fieldValue": "={{ $json.contact_name || null }}"
+            },
+            {
+              "fieldId": "job_title",
+              "fieldValue": "={{ $json.job_title || null }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email || null }}"
+            },
+            {
+              "fieldId": "phone",
+              "fieldValue": "={{ $json.phone || null }}"
+            },
+            {
+              "fieldId": "country",
+              "fieldValue": "={{ $json.country || null }}"
+            },
+            {
+              "fieldId": "city",
+              "fieldValue": "={{ $json.city || null }}"
+            },
+            {
+              "fieldId": "industry",
+              "fieldValue": "={{ $json.industry || null }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "source_url",
+              "fieldValue": "={{ $json.source_url || null }}"
+            },
+            {
+              "fieldId": "source_place_id",
+              "fieldValue": "={{ $json.source_place_id || null }}"
+            },
+            {
+              "fieldId": "need_signal",
+              "fieldValue": "={{ $json.need_signal || null }}"
+            },
+            {
+              "fieldId": "service_interest",
+              "fieldValue": "={{ $json.service_interest || null }}"
+            },
+            {
+              "fieldId": "address",
+              "fieldValue": "={{ $json.address || null }}"
+            },
+            {
+              "fieldId": "rating",
+              "fieldValue": "={{ $json.rating || 0 }}"
+            },
+            {
+              "fieldId": "review_count",
+              "fieldValue": "={{ $json.review_count || 0 }}"
+            },
+            {
+              "fieldId": "raw_payload",
+              "fieldValue": "={{ $json.raw_payload }}"
+            },
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "manual_review_required"
+            },
+            {
+              "fieldId": "website_verification_status",
+              "fieldValue": "pending"
+            },
+            {
+              "fieldId": "review_status",
+              "fieldValue": "pending"
+            },
+            {
+              "fieldId": "is_recommended",
+              "fieldValue": "={{ $json.is_recommended }}"
+            },
+            {
+              "fieldId": "recommendation_rank",
+              "fieldValue": "={{ $json.recommendation_rank || null }}"
+            }
+          ]
+        }
+      },
+      "id": "d50d3427-810c-47c0-8371-96a1349b8e64",
+      "name": "Create Unique Discovery Candidate",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        7344,
+        4624
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const candidate = $('Loop Over Candidates').first().json;\nconst saved = $json || {};\nconst message = [\n  saved.error?.message,\n  saved.error?.description,\n  saved.errorMessage,\n  saved.message,\n  saved.description,\n  saved.code\n].filter(Boolean).join(' | ');\nconst serialized = `${message} ${JSON.stringify(saved.error || {})}`.toLowerCase();\nconst duplicate = serialized.includes('23505') || serialized.includes('duplicate') || serialized.includes('unique constraint');\nconst hasError = Boolean(\n  saved.error ||\n  saved.errorMessage ||\n  (saved.httpCode && Number(saved.httpCode) >= 400) ||\n  (saved.code && String(saved.code).toLowerCase().startsWith('pgrst')) ||\n  duplicate\n);\nreturn {\n  json: {\n    ...candidate,\n    candidate_saved: !hasError && Boolean(saved.id || saved.lead_key),\n    candidate_duplicate: duplicate,\n    candidate_save_error: hasError && !duplicate ? message.slice(0, 1500) : ''\n  }\n};"
+      },
+      "id": "1c848d31-b05f-42c0-aa4c-44bbc81fb1fa",
+      "name": "Build Candidate Save Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7600,
+        4624
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const outcomes = $input.all().map((item) => item.json || {});\nconst first = outcomes[0] || {};\nconst stats = first.stats || {};\nconst savedCount = outcomes.filter((item) => item.candidate_saved).length;\nconst recommendedCount = outcomes.filter((item) => item.candidate_saved && item.is_recommended).length;\nconst databaseDuplicates = outcomes.filter((item) => item.candidate_duplicate).length;\nconst databaseErrors = outcomes.filter((item) => item.candidate_save_error).length;\nconst duplicateCount = Number(stats.internal_duplicate_count || 0) + databaseDuplicates;\nconst rejectedCount = Number(stats.rejected_count || 0) + databaseErrors;\nconst requested = Number(stats.requested_leads || first.requested_leads || 0);\nconst finishedAt = new Date().toISOString();\nconst hasReviewableLeads = savedCount > 0;\nreturn {\n  json: {\n    job_id: first.job_id,\n    collection_poll_worker_id: first.collection_poll_worker_id,\n    final_status: hasReviewableLeads ? 'needs_review' : 'completed_no_new_leads',\n    current_stage: hasReviewableLeads ? 'human_review_ready' : 'lead_list_ready',\n    progress_percent: 100,\n    businesses_found: Number(stats.raw_result_count || 0),\n    verified_leads: savedCount,\n    duplicates_removed: duplicateCount,\n    rejected_leads: rejectedCount,\n    next_workflow: null,\n    apify_finished_at: finishedAt,\n    completed_at: finishedAt,\n    result_summary: {\n      requested_leads: requested,\n      businesses_found: Number(stats.raw_result_count || 0),\n      normalized_candidates: Number(stats.normalized_count || 0),\n      discovery_candidates_saved: savedCount,\n      available_for_review: savedCount,\n      recommended_leads: recommendedCount,\n      duplicates_removed: duplicateCount,\n      rejected_leads: rejectedCount,\n      candidate_database_errors: databaseErrors,\n      intake_dispatch_status: hasReviewableLeads ? 'human_review_ready' : 'nothing_to_review'\n    }\n  }\n};"
+      },
+      "id": "7ea9157d-0da2-468b-80ba-e11e49d33d05",
+      "name": "Build Candidate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7344,
+        4336
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json || {};\nconst stats = input.stats || {};\nconst finishedAt = new Date().toISOString();\nreturn {\n  json: {\n    job_id: input.job_id,\n    collection_poll_worker_id: input.collection_poll_worker_id,\n    final_status: 'completed_no_new_leads',\n    current_stage: 'lead_list_ready',\n    progress_percent: 100,\n    businesses_found: Number(stats.raw_result_count || 0),\n    verified_leads: 0,\n    duplicates_removed: Number(stats.internal_duplicate_count || 0),\n    rejected_leads: Number(stats.rejected_count || 0),\n    next_workflow: null,\n    apify_finished_at: finishedAt,\n    completed_at: finishedAt,\n    result_summary: {\n      requested_leads: Number(stats.requested_leads || input.requested_leads || 0),\n      businesses_found: Number(stats.raw_result_count || 0),\n      normalized_candidates: 0,\n      discovery_candidates_saved: 0,\n      available_for_review: 0,\n      recommended_leads: 0,\n      duplicates_removed: Number(stats.internal_duplicate_count || 0),\n      rejected_leads: Number(stats.rejected_count || 0),\n      candidate_database_errors: 0,\n      intake_dispatch_status: 'nothing_to_review'\n    }\n  }\n};"
+      },
+      "id": "63625bf8-530e-49d8-a0b8-74dbeb38c9c6",
+      "name": "Build Empty Result Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7072,
+        4848
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collection_polling"
+            },
+            {
+              "keyName": "locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.collection_poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.final_status }}"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "={{ $json.current_stage }}"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "={{ $json.progress_percent }}"
+            },
+            {
+              "fieldId": "businesses_found",
+              "fieldValue": "={{ $json.businesses_found }}"
+            },
+            {
+              "fieldId": "verified_leads",
+              "fieldValue": "={{ $json.verified_leads }}"
+            },
+            {
+              "fieldId": "duplicates_removed",
+              "fieldValue": "={{ $json.duplicates_removed }}"
+            },
+            {
+              "fieldId": "rejected_leads",
+              "fieldValue": "={{ $json.rejected_leads }}"
+            },
+            {
+              "fieldId": "next_workflow",
+              "fieldValue": "={{ $json.next_workflow }}"
+            },
+            {
+              "fieldId": "result_summary",
+              "fieldValue": "={{ $json.result_summary }}"
+            },
+            {
+              "fieldId": "apify_finished_at",
+              "fieldValue": "={{ $json.apify_finished_at || $json.completed_at }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ $json.completed_at }}"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "4cb49f65-38a2-4aa8-967f-000f15de533d",
+      "name": "Update Final Job Result",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        7984,
+        4768
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json || {};\nconst summary = job.result_summary || {};\nconst savedCount = Number(summary.discovery_candidates_saved || job.verified_leads || 0);\nconst foundCount = Number(summary.businesses_found || job.businesses_found || 0);\nreturn {\n  json: {\n    job_id: job.job_id,\n    event_type: 'lead_discovery_completed',\n    status: job.status || 'completed',\n    stage: job.current_stage || 'human_review_ready',\n    severity: savedCount > 0 || foundCount === 0 ? 'info' : 'warning',\n    error_code: job.error_code || '',\n    event_message: 'Google Maps discovery finished: ' + savedCount + ' lead(s) available for human review from ' + foundCount + ' discovered business(es).',\n    event_payload: summary\n  }\n};"
+      },
+      "id": "0655b44e-7dac-48f4-a9e1-3acc49e9662e",
+      "name": "Build Completion Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8240,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload }}"
+            }
+          ]
+        }
+      },
+      "id": "5dc3aacc-ba36-4baf-bab4-9d9c776600df",
+      "name": "Log Discovery Completion",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        8480,
+        4768
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json || {};\nreturn {\n  json: {\n    job_id: input.job_id,\n    collection_poll_worker_id: input.collection_poll_worker_id,\n    dataset_fetch_error: input.dataset_fetch_error,\n    event_type: 'dataset_fetch_retry',\n    status: 'collecting',\n    stage: 'fetching_google_maps_results',\n    severity: 'warning',\n    error_code: 'APIFY_DATASET_FETCH_FAILED',\n    event_message: input.dataset_fetch_error || 'Apify dataset could not be fetched; next scheduler run will retry.',\n    event_payload: {\n      apify_run_id: input.apify_run_id,\n      apify_dataset_id: input.apify_dataset_id\n    }\n  }\n};"
+      },
+      "id": "19046ffc-e386-45df-97f6-679d5cebe29d",
+      "name": "Build Dataset Retry Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6608,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "lead_discovery_events",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_id",
+              "fieldValue": "={{ $json.job_id || null }}"
+            },
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $json.event_type }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "stage",
+              "fieldValue": "={{ $json.stage }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $json.severity }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "={{ $json.error_code || null }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.event_message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.event_payload }}"
+            }
+          ]
+        }
+      },
+      "id": "49f846b9-76eb-48da-99cd-5550c2fab558",
+      "name": "Log Dataset Fetch Retry",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6864,
+        4976
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collection_polling"
+            },
+            {
+              "keyName": "locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.collection_poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "collecting"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "fetching_google_maps_results"
+            },
+            {
+              "fieldId": "progress_percent",
+              "fieldValue": "20"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "APIFY_DATASET_FETCH_FAILED"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ $json.dataset_fetch_error }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ null }}"
+            }
+          ]
+        }
+      },
+      "id": "14ef6b98-f7f6-497f-854b-aac65914a466",
+      "name": "Keep Job Collecting After Dataset Error",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6848,
+        4768
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_candidates",
+        "limit": 20,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verified"
+            }
+          ]
+        }
+      },
+      "id": "2c7f50d5-883f-41f0-b266-234ea31877fe",
+      "name": "Get Pending Intake Leads",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4608,
+        5200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "42efa728-5857-4262-8480-822c6407c620",
+      "name": "Loop Pending Intake Leads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4848,
+        5200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1Lg0RHZ_BcuV-7QA4mg2SwucbNrOvrNFg5nX000H7dBA",
+          "mode": "list",
+          "cachedResultName": "CodeNativeX Lead Pipeline",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Lg0RHZ_BcuV-7QA4mg2SwucbNrOvrNFg5nX000H7dBA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Raw Leads headers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Lg0RHZ_BcuV-7QA4mg2SwucbNrOvrNFg5nX000H7dBA/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "company_name": "={{ $json.company_name }}",
+            "website": "={{ $json.website || '' }}",
+            "contact_name": "={{ $json.contact_name || '' }}",
+            "job_title": "={{ $json.job_title || '' }}",
+            "email": "={{ $json.email || '' }}",
+            "phone": "={{ $json.phone || '' }}",
+            "country": "={{ $json.country || '' }}",
+            "city": "={{ $json.city || '' }}",
+            "industry": "={{ $json.industry || '' }}",
+            "source": "={{ $json.source }}",
+            "source_url": "={{ $json.source_url || '' }}",
+            "need_signal": "={{ $json.need_signal || '' }}",
+            "service_interest": "={{ $json.service_interest || '' }}",
+            "discovery_candidate_id": "={{ $json.id }}"
+          },
+          "matchingColumns": [
+            "discovery_candidate_id"
+          ],
+          "schema": [
+            {
+              "id": "discovery_candidate_id",
+              "displayName": "discovery_candidate_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "contact_name",
+              "displayName": "contact_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_title",
+              "displayName": "job_title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "country",
+              "displayName": "country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "industry",
+              "displayName": "industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source_url",
+              "displayName": "source_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "need_signal",
+              "displayName": "need_signal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "service_interest",
+              "displayName": "service_interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "processing_status",
+              "displayName": "processing_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "validation_status",
+              "displayName": "validation_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "outreach_status",
+              "displayName": "outreach_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reply_category",
+              "displayName": "reply_category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "meeting_status",
+              "displayName": "meeting_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "call_status",
+              "displayName": "call_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_action_at",
+              "displayName": "last_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "7614e583-328a-460d-9404-fb621c11a722",
+      "name": "Upsert Into Raw Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5104,
+        5296
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3hw0xX0FeS9xHS5A",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const candidate = $('Loop Pending Intake Leads').first().json;\nconst sheet = $json || {};\nconst message = [\n  sheet.error?.message,\n  sheet.error?.description,\n  sheet.errorMessage,\n  sheet.message,\n  sheet.description\n].filter(Boolean).join(' | ');\nconst hasError = Boolean(\n  sheet.error ||\n  sheet.errorMessage ||\n  (sheet.httpCode && Number(sheet.httpCode) >= 400)\n);\nreturn {\n  json: {\n    ...candidate,\n    sheet_sync_ok: !hasError,\n    sheet_sync_attempts_next: Number(candidate.sheet_sync_attempts || 0) + 1,\n    intake_status_next: hasError ? 'website_verified' : 'sent_to_intake',\n    sheet_sync_error: hasError ? message.slice(0, 1500) : '',\n    sheet_synced_at: hasError ? null : new Date().toISOString()\n  }\n};"
+      },
+      "id": "127fc770-59f8-4448-958d-9aa5c5e8d18f",
+      "name": "Build Sheet Sync Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5344,
+        5296
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_candidates",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "intake_status",
+              "condition": "eq",
+              "keyValue": "website_verified"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "intake_status",
+              "fieldValue": "={{ $json.intake_status_next }}"
+            },
+            {
+              "fieldId": "sheet_sync_attempts",
+              "fieldValue": "={{ $json.sheet_sync_attempts_next }}"
+            },
+            {
+              "fieldId": "last_sync_error",
+              "fieldValue": "={{ $json.sheet_sync_error || null }}"
+            },
+            {
+              "fieldId": "sheet_synced_at",
+              "fieldValue": "={{ $json.sheet_synced_at }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "7356983e-ccef-45f0-be7c-1bfb417d43c7",
+      "name": "Update Candidate Intake Status",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5600,
+        5296
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collecting"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "collection_polling"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "polling_google_maps_collection"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ '00B-poll-' + $execution.id }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "7ccb2d4f-f7c7-496d-a501-4b726ce4a97b",
+      "name": "Claim Collection Poll",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4720,
+        4768
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_discovery_jobs",
+        "limit": 10,
+        "orderBy": "updated_at",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collection_polling"
+            }
+          ]
+        }
+      },
+      "id": "d9590b1e-3a18-4692-b03c-6ff8aad1a03f",
+      "name": "Get Stale Collection Poll",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4608,
+        5088
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cutoff = Date.now() - 10 * 60 * 1000;\nreturn $input.all().filter((item) => {\n  const row = item.json || {};\n  const timestamp = Date.parse(row.locked_at || row.updated_at || '');\n  return row.id && row.status === 'collection_polling' && Number.isFinite(timestamp) && timestamp < cutoff;\n}).slice(0, 1).map((item) => ({ json: { ...item.json, stale_poll_status: item.json.status, stale_poll_worker_id: item.json.locked_by } }));"
+      },
+      "id": "efe20c4e-fb56-40a0-b5b5-eec859cf297c",
+      "name": "Select Stale Collection Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        5088
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_discovery_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "collection_polling"
+            },
+            {
+              "keyName": "locked_by",
+              "condition": "eq",
+              "keyValue": "={{ $json.stale_poll_worker_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "collecting"
+            },
+            {
+              "fieldId": "current_stage",
+              "fieldValue": "google_maps_collecting"
+            },
+            {
+              "fieldId": "locked_at",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "locked_by",
+              "fieldValue": "={{ null }}"
+            },
+            {
+              "fieldId": "error_code",
+              "fieldValue": "STALE_COLLECTION_POLL_RECOVERED"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "A stale collection poll lock was released automatically."
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now }}"
+            }
+          ]
+        }
+      },
+      "id": "4fa339dd-1cb0-47d2-9cac-864b098dff9a",
+      "name": "Release Stale Collection Poll",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5088,
+        5088
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Z2RxZXIVd6SOxP6p",
+          "name": "Codenativex Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Get Next Queued Job",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Collecting Job",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Pending Intake Leads",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Stale Collection Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test": {
+      "main": [
+        [
+          {
+            "node": "Get Next Queued Job",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Collecting Job",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Pending Intake Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Queued Job": {
+      "main": [
+        [
+          {
+            "node": "Queued Job Due?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queued Job Due?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Apify Actor Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Apify Actor Start": {
+      "main": [
+        [
+          {
+            "node": "Claim Queued Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Queued Job": {
+      "main": [
+        [
+          {
+            "node": "Resolve Job Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Job Claim": {
+      "main": [
+        [
+          {
+            "node": "Job Claim Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Claim Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Start Apify Google Maps Actor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Apify Google Maps Actor": {
+      "main": [
+        [
+          {
+            "node": "Parse Apify Actor Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Apify Actor Start": {
+      "main": [
+        [
+          {
+            "node": "Apify Actor Started?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify Actor Started?": {
+      "main": [
+        [
+          {
+            "node": "Mark Job Collecting",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Retry or Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Job Collecting": {
+      "main": [
+        [
+          {
+            "node": "Build Actor Started Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Actor Started Event": {
+      "main": [
+        [
+          {
+            "node": "Log Actor Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Retry or Failure": {
+      "main": [
+        [
+          {
+            "node": "Update Job Retry or Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Job Retry or Failure": {
+      "main": [
+        [
+          {
+            "node": "Build Retry Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Retry Event": {
+      "main": [
+        [
+          {
+            "node": "Log Retry or Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Collecting Job": {
+      "main": [
+        [
+          {
+            "node": "Claim Collection Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Actor Poll": {
+      "main": [
+        [
+          {
+            "node": "Poll Apify Actor Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Apify Actor Run": {
+      "main": [
+        [
+          {
+            "node": "Parse Apify Run Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Apify Run Status": {
+      "main": [
+        [
+          {
+            "node": "Actor Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actor Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Apify Dataset Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Actor Still Running?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actor Still Running?": {
+      "main": [
+        [
+          {
+            "node": "Update Collection Heartbeat",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Poll API Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll API Error?": {
+      "main": [
+        [
+          {
+            "node": "Record Poll Warning",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Retry or Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Apify Dataset Items": {
+      "main": [
+        [
+          {
+            "node": "Parse Dataset Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Dataset Response": {
+      "main": [
+        [
+          {
+            "node": "Dataset Fetch OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dataset Fetch OK?": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Deduplicate Places",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Dataset Retry Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dataset Retry Event": {
+      "main": [
+        [
+          {
+            "node": "Log Dataset Fetch Retry",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Keep Job Collecting After Dataset Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Deduplicate Places": {
+      "main": [
+        [
+          {
+            "node": "Any Candidate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Candidate?": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Empty Result Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Candidates": {
+      "main": [
+        [
+          {
+            "node": "Build Candidate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Unique Discovery Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Unique Discovery Candidate": {
+      "main": [
+        [
+          {
+            "node": "Build Candidate Save Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Candidate Save Outcome": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Candidate Summary": {
+      "main": [
+        [
+          {
+            "node": "Update Final Job Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Empty Result Summary": {
+      "main": [
+        [
+          {
+            "node": "Update Final Job Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Final Job Result": {
+      "main": [
+        [
+          {
+            "node": "Build Completion Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Completion Event": {
+      "main": [
+        [
+          {
+            "node": "Log Discovery Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Intake Leads": {
+      "main": [
+        [
+          {
+            "node": "Loop Pending Intake Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Pending Intake Leads": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Upsert Into Raw Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Into Raw Leads": {
+      "main": [
+        [
+          {
+            "node": "Build Sheet Sync Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sheet Sync Outcome": {
+      "main": [
+        [
+          {
+            "node": "Update Candidate Intake Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Candidate Intake Status": {
+      "main": [
+        [
+          {
+            "node": "Loop Pending Intake Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Collection Poll": {
+      "main": [
+        [
+          {
+            "node": "Prepare Actor Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Stale Collection Poll": {
+      "main": [
+        [
+          {
+            "node": "Select Stale Collection Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Stale Collection Poll": {
+      "main": [
+        [
+          {
+            "node": "Release Stale Collection Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "93b3332c23b7d7da4a8ac7a2d25335d0b65ef3b219af7b4aff014f84741d63fa"
+  },
+  "nodeGroups": [],
+  "id": "yBx13TmtojwiLHAs",
+  "tags": []
+}
