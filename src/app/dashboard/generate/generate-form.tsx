@@ -113,6 +113,7 @@ export function GenerateLeadsForm() {
   const summaryRows = [
     { label: "Source", value: selectedSource?.sourceLabel ?? "Not selected" },
     { label: "Area", value: location || "Not selected" },
+    { label: "Service", value: values.service || "Not selected" },
     { label: "Business type", value: values.categories.join(", ") || "Not selected" },
     { label: "Leads", value: String(values.requestedLeadCount) },
   ];
@@ -210,6 +211,25 @@ export function GenerateLeadsForm() {
                 />
               </Field>
 
+              <Field id="service" label="Service to offer" error={errors.service?.message}>
+                <select
+                  id="service"
+                  aria-invalid={Boolean(errors.service)}
+                  disabled={mutation.isPending}
+                  className="h-10 w-full rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-3 text-sm text-[var(--app-text)] focus:outline-2 focus:outline-offset-2 focus:outline-teal-500"
+                  {...register("service")}
+                >
+                  {DISCOVERY_SOURCE_RULES[values.source].services.map(service => (
+                    <option key={service} value={service}>{service}</option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+                  {values.source === "google_maps"
+                    ? "Both website and no-website businesses are kept. Website offers adapt after verification: existing websites receive an audit-based redesign offer; no website found receives a new website offer. Uncertain websites stay for review. SEO and performance services are kept when a website exists."
+                    : DISCOVERY_SOURCE_RULES[values.source].guidance}
+                </p>
+              </Field>
+
               <LocationFields value={{ country: values.country, region: values.region, city: values.city }} onChange={location => {
                 setValue("country", location.country, { shouldDirty: true });
                 setValue("region", location.region, { shouldDirty: true });
@@ -286,4 +306,5 @@ export function GenerateLeadsForm() {
     </>
   );
 }
+
 
