@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { AutomationJobProgress } from "./automation-job-progress";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -11,12 +12,13 @@ import { LocationFields } from "./location-fields";
 const style = "mt-1 w-full rounded-md border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2 text-sm text-[var(--app-text)]";
 export function AutomationDiscoveryForm() {
   const client = useQueryClient();
+  const [jobId, setJobId] = useState<string | null>(null);
   const [location, setLocation] = useState({ country: "United States", region: "", city: "" });
   const [category, setCategory] = useState<string>(ONLINE_STORE_CATEGORIES[0]);
   const [custom, setCustom] = useState("");
   const search = useMutation({
-    mutationFn: (input: Record<string, unknown>) => apiSend("/api/automation", "POST", { action: "search", input }),
-    onSuccess: () => { toast.success("AI opportunity discovery queued", { description: "Review results in AI Automation Opportunities." }); void client.invalidateQueries({ queryKey: ["automation-opportunities"] }); },
+    mutationFn: (input: Record<string, unknown>) => apiSend<{saved:boolean;id:string}>("/api/automation", "POST", { action: "search", input }),
+    onSuccess: result => { setJobId(result.id); toast.success("AI opportunity discovery queued", { description: "Review results in AI Automation Opportunities." }); void client.invalidateQueries({ queryKey: ["automation-opportunities"] }); },
     onError: (error: Error) => toast.error(error.message),
   });
   return <form className="space-y-4" onSubmit={event => {
@@ -33,9 +35,11 @@ export function AutomationDiscoveryForm() {
     <label className="text-xs">Results (1–10)<input name="limit" type="number" className={style} defaultValue={5} min={1} max={10} required disabled={search.isPending} /></label></div>
     <p className="text-xs text-[var(--app-text-muted)]">Online-store searches check public online-sales and customer-contact evidence. Look for delivery, shipping, product and order-support opportunities. Results are potential fits; private messages and response times are not inspected. Search uses OpenAI credits and needs workflow 06 active.</p>
     <Button type="submit" loading={search.isPending}>Find AI opportunities</Button>
+    {jobId ? <AutomationJobProgress jobId={jobId} /> : null}
     {search.isError ? <p role="alert" className="text-sm text-red-400">{search.error.message}</p> : null}
     {search.isSuccess ? <p role="status" className="text-sm">Search queued. <Link className="underline" href="/dashboard/automation">View discovery progress and review results</Link></p> : null}
     <p className="text-xs text-[var(--app-text-muted)]">City and state matching uses public location evidence, not GPS radius tracking. Private inboxes and groups are not searched. Discovery never sends email; approve the business and its draft first.</p>
   </form>;
 }
+
 

@@ -50,3 +50,4 @@ test("new section renders real query data, public evidence controls and the appr
   assert.doesNotMatch(html, /No opportunities in this view/);
   client.clear();
 });
+

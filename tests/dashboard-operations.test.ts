@@ -75,10 +75,16 @@ test("overview uses statement-time live summary and never reads reporting snapsh
  t.mock.method(globalThis,"fetch",async(input:Parameters<typeof fetch>[0])=>{
   const url=String(input);urls.push(url);
   if(url.includes("/rpc/"))return Response.json({mode:"live",updatedAt:"2026-10-16T00:00:00Z",metrics:{totalLeadsFound:2142},pipeline:[],outreachSummary:[]});
+  if(new URL(url).pathname.endsWith("/lead_pipeline")){
+   const columns=(new URL(url).searchParams.get("select")||"").split(",");
+   if(columns.includes("job_id"))return Response.json({message:"column lead_pipeline.job_id does not exist"},{status:400});
+   return Response.json([{id:lead.id,company_name:"Real business",updated_at:"2026-10-16T00:00:00Z",last_outreach_error:"Contact needs review"}]);
+  }
   return Response.json([]);
  });
  const adapter=new SupabaseAdapter(createClient("https://unit-test.supabase.co","unit-test"),"admin@test.invalid");
  const data=await adapter.getOverview();assert.equal(data.metrics.totalLeadsFound,2142);assert.equal(data.mode,"live");assert.ok(urls.some(u=>u.includes("codenativex_dashboard_live_summary")));assert.ok(urls.every(u=>!u.includes("lead_dashboard_latest")));
+ const issue=data.itemsNeedingReview?.[0];assert.ok(issue);assert.equal(issue.leadId,lead.id);assert.equal(issue.requestId,null);assert.match(issue.message,/Contact needs review/);
 });
 test("live record lists paginate beyond the server row cap without substituting samples",async t=>{
  const offsets:number[]=[];

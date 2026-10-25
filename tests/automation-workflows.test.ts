@@ -102,3 +102,4 @@ test("HTML-only replies exclude quoted previous messages", () => {
   assert.match(row.body, /Thanks/);
   assert.doesNotMatch(row.body, /book a meeting/);
 });
+

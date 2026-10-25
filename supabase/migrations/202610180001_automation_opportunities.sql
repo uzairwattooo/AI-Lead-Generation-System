@@ -93,3 +93,4 @@ revoke all on function public.automation_guard_website_contact() from public,ano
 revoke all on function public.automation_claim_job(),public.automation_claim_email() from public,anon,authenticated;
 grant execute on function public.automation_claim_job(),public.automation_claim_email() to service_role;
 commit;
+

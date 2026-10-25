@@ -153,3 +153,4 @@ export const SEGMENT_LABELS: Record<string, string> = {
   settings: "Settings",
   automation: "AI Automation Opportunities",
 };
+

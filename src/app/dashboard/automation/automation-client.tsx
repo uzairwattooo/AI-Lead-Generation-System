@@ -1,4 +1,6 @@
 "use client";
+import { AutomationJobSummary } from "@/components/discovery/automation-job-progress";
+import type { DiscoveryJob } from "@/lib/automation/discovery-progress";
 import { AutomationDiscoveryForm } from "@/components/discovery/automation-discovery-form";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,17 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiGet, apiSend } from "@/services/http";
 import type { Opportunity, Outbox } from "@/server/automation/service";
-type Job = {
-  id: string;
-  category: string;
-  city: string;
-  region?: string;
-  country?: string;
-  kind: string;
-  status: string;
-  result_count: number;
-  error: string | null;
-};
+type Job = DiscoveryJob;
 type Data = {
   opportunities: Opportunity[];
   outbox: Outbox[];
@@ -45,7 +37,7 @@ export default function AutomationClient() {
   const query = useQuery({
     queryKey: ["automation-opportunities"],
     queryFn: ({ signal }) => apiGet<Data>("/api/automation", signal),
-    refetchInterval: 15000,
+    refetchInterval: query => query.state.data?.jobs.some(job => ["queued", "running"].includes(job.status)) ? 3000 : 15000,
   });
   const action = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -417,19 +409,8 @@ export default function AutomationClient() {
               key={j.id}
               className="mt-3 border-t border-[var(--app-border)] pt-3 text-sm"
             >
-              <strong>
-                {j.category} · {[j.city, j.region, j.country].filter(Boolean).join(", ")}
-              </strong>
-              <p className="text-xs">
-                {j.kind.replaceAll("_", " ")} · {j.status} · {j.result_count}{" "}
-                results processed
-              </p>
-              {j.error ? (
-                <p role="alert" className="text-xs text-amber-600">
-                  {j.error}
-                </p>
-              ) : null}
-              {j.status === "failed" ? (
+              <AutomationJobSummary job={j} />
+              {j.status === "failed" || (j.status === "completed" && j.result_count === 0) ? (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -438,7 +419,7 @@ export default function AutomationClient() {
                     action.mutate({ action: "retry_search", id: j.id })
                   }
                 >
-                  Retry discovery
+                  Start new discovery (uses credits)
                 </Button>
               ) : null}
             </div>
@@ -553,5 +534,6 @@ export default function AutomationClient() {
     </div>
   );
 }
+
 
 

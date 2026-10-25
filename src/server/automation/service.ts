@@ -1,3 +1,4 @@
+import { citationKey, discoveryCandidate, discoveryLocationMatches, type DiscoveryDiagnostic } from "@/lib/automation/discovery-progress";
 import { isOnlineStoreSearch, isStoreOpportunity } from "@/lib/automation/store-focus";
 import "server-only";
 import { load } from "cheerio";
@@ -92,6 +93,11 @@ export async function listAutomation() {
     limit: 300,
   };
 }
+export async function getDiscoveryJob(id: string) {
+  const { data, error } = await db().from("automation_discovery_jobs").select("*").eq("id", id).single();
+  check(error);
+  return data;
+}
 async function readProspect(id: string) {
   const { data, error } = await db()
     .from("automation_opportunities")
@@ -140,8 +146,15 @@ export async function saveProspect(
   cited = true,
   signal?: AbortSignal,
   requireStoreEvidence = false,
+  locationMatches = true,
 ) {
-  const html = await sourceText(input.source_url, signal);
+  let html = "";
+  let sourceError = "";
+  try { html = await sourceText(input.source_url, signal); }
+  catch (error) {
+    if (signal?.aborted) throw new Error("Discovery deadline reached during source verification.");
+    sourceError = safeError(error);
+  }
   const $ = load(html);
   $("script,style,noscript").remove();
   const publicLinks = $("a[href]")
@@ -158,12 +171,20 @@ export async function saveProspect(
     .trim();
   const result = assess(input, text);
   const isBusiness = kind === "business";
-  const verified = isBusiness
+  let verified = isBusiness
     ? result.verified && cited
     : normal(text).includes(normal(input.excerpt)) && cited;
-  if (isBusiness && requireStoreEvidence && (!verified || !isStoreOpportunity(result.signals))) {
-    throw new Error("Online-store discovery needs verified online-sales and customer-contact evidence.");
-  }
+  const reasons: string[] = [];
+  if (!locationMatches) reasons.push("Returned city/country differs from the requested area; location needs review.");
+  if (!cited) reasons.push("The exact source URL was not confirmed in search citations.");
+  if (!text.trim()) reasons.push(sourceError ? "Source fetch failed: " + sourceError : "Source page had no readable text; it may be blocked, unsupported or empty.");
+  if (text.trim() && !normal(text).includes(normal(input.excerpt))) reasons.push("The supplied excerpt was not found verbatim in the fetched public page.");
+  if (isBusiness && text.trim() && !normal(text).includes(normal(input.company_name))) reasons.push("Business name was not found in the fetched page.");
+  if (isBusiness && canonicalHost(input.website) !== canonicalHost(input.source_url)) reasons.push("The cited source is not on the official website domain.");
+  if (isBusiness && !result.verified && !reasons.length) reasons.push("First-party business identity could not be verified.");
+  if (isBusiness && requireStoreEvidence && !isStoreOpportunity(result.signals)) reasons.push("Online-sales plus customer-contact evidence is incomplete.");
+  verified = verified && locationMatches && !(isBusiness && requireStoreEvidence && !isStoreOpportunity(result.signals));
+  if (verified && isBusiness && !result.email) reasons.push("No matching published business email was found on this source page.");
   const key = isBusiness
     ? `business:${canonicalHost(input.website)}`
     : `request:${new URL(input.source_url).toString()}`;
@@ -171,26 +192,33 @@ export async function saveProspect(
     ...input,
     job_id: jobId || null,
     kind,
-    email: isBusiness ? result.email : null,
+    email: isBusiness && verified ? result.email : null,
     source_key: key,
     source_verified: verified,
     signals: isBusiness ? result.signals : [],
     capabilities: isBusiness ? result.capabilities : ["Public request review"],
     score: isBusiness && verified ? result.score : 0,
-    reason: !cited
-      ? "Search citation was not confirmed. Manual source verification required."
-      : isBusiness
-        ? result.reason
-        : "Public excerpt found; buyer intent, location and freshness require manual review. No automatic messages are sent to post authors.",
+    reason: reasons.length ? reasons.join(" ") : isBusiness ? result.reason : "Public request excerpt verified; review intent, location and freshness manually. No automatic message is sent.",
     updated_at: timestamp(),
   };
   // Ignore duplicates instead of resetting approval, opt-outs or sent history on another discovery job.
-  const { error } = await db()
-    .from("automation_opportunities")
-    .upsert(row, { onConflict: "source_key", ignoreDuplicates: true });
+  const { data: saved, error } = await db().from("automation_opportunities")
+    .upsert(row, { onConflict: "source_key", ignoreDuplicates: true }).select("id");
   check(error);
-  return { verified };
+  if (!saved?.length && !jobId && isBusiness && verified) {
+    // An explicit manual source import may repair a pending, unverified candidate.
+    // Discovery reruns never overwrite approval, opt-outs, or prior send history.
+    const fields: Record<string,unknown> = {...row};
+    delete fields.job_id;
+    const {data: refreshed,error: refreshError} = await db().from("automation_opportunities").update(fields)
+      .eq("source_key",key).eq("review_status","pending").eq("source_verified",false).eq("do_not_contact",false).select("id");
+    check(refreshError);
+    if(refreshed?.length) return {verified,duplicate:false,id:String(refreshed[0].id),needsReview:!row.email,reason:row.reason};
+  }
+  if (!saved?.length) return { verified: false, duplicate: true, id: undefined as string | undefined, needsReview: false, reason: "Already saved previously; existing approval and contact history were preserved." };
+  return { verified, duplicate: false, id: String(saved[0].id), needsReview: !verified || !row.email, reason: row.reason };
 }
+
 export async function runDiscovery() {
   const key = process.env.OPENAI_API_KEY;
   if (!key)
@@ -213,7 +241,22 @@ export async function runDiscovery() {
   check(error);
   const job = data?.[0];
   if (!job) return { processed: false };
+  if (!job.run_id) throw new Error("Apply the AI discovery progress migration before running workflow 06.");
+  const diagnostics: DiscoveryDiagnostic[] = [];
+  let count = 0, verifiedCount = 0, reviewCount = 0, duplicates = 0, found = 0;
+  let lastStage = "searching", lastPercent = 5;
+  async function checkpoint(stage: string, percent: number, extra: Record<string,unknown> = {}) {
+    const { data: updated, error } = await client.from("automation_discovery_jobs").update({
+      stage, progress_percent: percent, found_count: found, processed_count: diagnostics.length,
+      result_count: count, verified_count: verifiedCount, review_count: reviewCount,
+      duplicate_count: duplicates, diagnostics, updated_at: timestamp(), ...extra,
+    }).eq("id", job.id).eq("run_id", job.run_id).eq("status", "running").select("id").maybeSingle();
+    check(error);
+    if (!updated) throw new Error("Discovery run lease changed; this execution stopped.");
+    lastStage = stage; lastPercent = percent;
+  }
   try {
+    await checkpoint("searching", 10);
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -279,63 +322,44 @@ export async function runDiscovery() {
           ),
         ])
         .filter((u): u is string => Boolean(u))
-        .map((u) => u.replace(/\/$/, "")),
+        .map(citationKey).filter(Boolean),
     );
-    let count = 0;
-    let rejected = 0;
-    for (const value of parsed.businesses.slice(0, job.requested_count)) {
-      if (deadline.aborted)
-        throw new Error(
-          "Discovery deadline reached. Some verified results may already be saved; review before retrying.",
-        );
-      const p = prospectSchema.safeParse(value);
+    const values = parsed.businesses.slice(0, job.requested_count);
+    found = values.length;
+    await checkpoint("reviewing", 40);
+    for (const value of values) {
+      if (deadline.aborted) throw new Error("Discovery deadline reached. Saved results remain available for review.");
+      const picked = discoveryCandidate(value);
+      const name = String(picked.company_name || "Unnamed result").slice(0,160);
+      const p = prospectSchema.safeParse(picked);
       if (!p.success) {
-        rejected++;
-        continue;
+        diagnostics.push({ name, outcome: "invalid", reason: "Result fields need correction: " + p.error.issues.map(issue => String(issue.path[0] || "result") + ": " + issue.message).join("; ").slice(0,500) });
+      } else {
+        try {
+          const result = await saveProspect(p.data, job.kind, job.id,
+            citations.has(citationKey(p.data.source_url)), deadline,
+            job.kind === "business" && isOnlineStoreSearch(job.category),
+            discoveryLocationMatches(p.data, job));
+          if (result.duplicate) duplicates++;
+          else { count++; if (result.needsReview) reviewCount++; else verifiedCount++; }
+          diagnostics.push({name, outcome: result.duplicate ? "duplicate" : result.needsReview ? "needs_review" : "saved", reason: result.reason, sourceUrl: p.data.source_url, opportunityId: result.id});
+        } catch (error) {
+          if (deadline.aborted) throw error;
+          diagnostics.push({ name, outcome: "save_failed", sourceUrl: p.data.source_url, reason: safeError(error) });
+        }
       }
-      // Keep a model from moving the search to a different country/city without telling the operator.
-      if (
-        normal(p.data.city) !== normal(job.city) ||
-        normal(p.data.country) !== normal(job.country)
-      ) {
-        rejected++;
-        continue;
-      }
-      try {
-        await saveProspect(
-          p.data,
-          job.kind,
-          job.id,
-          citations.has(p.data.source_url.replace(/\/$/, "")),
-          deadline,
-          job.kind === "business" && isOnlineStoreSearch(job.category),
-        );
-        count++;
-      } catch {
-        rejected++;
-      }
+      await checkpoint("reviewing", 40 + Math.round(diagnostics.length / Math.max(1, found) * 50));
     }
-    const { error: e } = await client
-      .from("automation_discovery_jobs")
-      .update({
-        status: "completed",
-        result_count: count,
-        error: rejected
-          ? `${rejected} results could not be verified or saved. No contacts were invented.`
-          : null,
-        updated_at: timestamp(),
-      })
-      .eq("id", job.id)
-      .eq("status", "running");
-    check(e);
-    return { processed: true, jobId: job.id, resultCount: count };
+    const failures = diagnostics.filter(row => row.outcome === "invalid" || row.outcome === "save_failed").length;
+    await checkpoint("completed", 100, {
+      status: "completed",
+      error: failures ? `${failures} results need correction or could not be saved. Open result details for each reason.` : reviewCount ? `${reviewCount} saved businesses need source/contact review before outreach.` : null,
+    });
+    return { processed: true, jobId: job.id, resultCount: count, needsReview: reviewCount, duplicates };
   } catch (error) {
     const message = safeError(error);
-    await client
-      .from("automation_discovery_jobs")
-      .update({ status: "failed", error: message, updated_at: timestamp() })
-      .eq("id", job.id)
-      .eq("status", "running");
+    try { await checkpoint(lastStage, lastPercent, { status: "failed", error: message }); }
+    catch { /* A newer worker owns this job, or the database is unavailable; do not overwrite its state. */ }
     return { processed: true, jobId: job.id, error: message };
   }
 }
@@ -713,5 +737,6 @@ export async function receiveReply(value: {
   check(done);
   return { saved: true, intent, needsReview: true };
 }
+
 
 
