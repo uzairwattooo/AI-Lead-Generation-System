@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ONLINE_STORE_CATEGORIES } from "@/lib/automation/store-focus";
 import { BUSINESS_CATEGORIES } from "@/lib/constants";
 import { apiSend } from "@/services/http";
 import { LocationFields } from "./location-fields";
@@ -11,7 +12,7 @@ const style = "mt-1 w-full rounded-md border border-[var(--app-border)] bg-[var(
 export function AutomationDiscoveryForm() {
   const client = useQueryClient();
   const [location, setLocation] = useState({ country: "United States", region: "", city: "" });
-  const [category, setCategory] = useState("All business categories");
+  const [category, setCategory] = useState<string>(ONLINE_STORE_CATEGORIES[0]);
   const [custom, setCustom] = useState("");
   const search = useMutation({
     mutationFn: (input: Record<string, unknown>) => apiSend("/api/automation", "POST", { action: "search", input }),
@@ -24,16 +25,17 @@ export function AutomationDiscoveryForm() {
     search.mutate({ ...location, category: category === "__custom" ? custom : category, kind: form.get("kind"), limit: Number(form.get("limit")) });
   }}>
     <label className="block text-xs">Business category<select className={style} value={category} disabled={search.isPending} onChange={e => setCategory(e.target.value)}>
-      <option>All business categories</option>{BUSINESS_CATEGORIES.map(c => <option key={c}>{c}</option>)}<option value="__custom">Other business category</option>
+      <optgroup label="Online stores and customer support">{ONLINE_STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</optgroup><option>All business categories</option>{BUSINESS_CATEGORIES.map(c => <option key={c}>{c}</option>)}<option value="__custom">Other business category</option>
     </select></label>
     {category === "__custom" ? <label className="block text-xs">Enter category<input className={style} value={custom} onChange={e => setCustom(e.target.value)} required minLength={2} maxLength={100} disabled={search.isPending} /></label> : null}
     <LocationFields value={location} onChange={setLocation} disabled={search.isPending} />
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs">Search type<select name="kind" className={style} disabled={search.isPending}><option value="business">Businesses for AI agents</option><option value="buyer_request">Public buying requests</option></select></label>
     <label className="text-xs">Results (1–10)<input name="limit" type="number" className={style} defaultValue={5} min={1} max={10} required disabled={search.isPending} /></label></div>
-    <p className="text-xs text-[var(--app-text-muted)]">Find potential fits for enquiry replies, lead qualification, bookings and a business dashboard. Public evidence is checked; message volume and purchase intent are not confirmed. Search uses OpenAI credits and needs workflow 06 active.</p>
+    <p className="text-xs text-[var(--app-text-muted)]">Online-store searches check public online-sales and customer-contact evidence. Look for delivery, shipping, product and order-support opportunities. Results are potential fits; private messages and response times are not inspected. Search uses OpenAI credits and needs workflow 06 active.</p>
     <Button type="submit" loading={search.isPending}>Find AI opportunities</Button>
     {search.isError ? <p role="alert" className="text-sm text-red-400">{search.error.message}</p> : null}
     {search.isSuccess ? <p role="status" className="text-sm">Search queued. <Link className="underline" href="/dashboard/automation">View discovery progress and review results</Link></p> : null}
     <p className="text-xs text-[var(--app-text-muted)]">City and state matching uses public location evidence, not GPS radius tracking. Private inboxes and groups are not searched. Discovery never sends email; approve the business and its draft first.</p>
   </form>;
 }
+
