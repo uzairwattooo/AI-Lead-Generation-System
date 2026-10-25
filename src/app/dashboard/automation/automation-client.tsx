@@ -97,9 +97,10 @@ export default function AutomationClient() {
             AI Automation Opportunities
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--app-text-muted)]">
-            Find businesses that may benefit from enquiry replies, lead
-            qualification and booking agents. Review public evidence, approve
-            the business, then review its email.
+            Find online stores and social sellers that may benefit from delivery,
+            shipping, product and order-support assistants. Review public evidence,
+            approve the business, then review its professional email. Other business
+            categories remain available.
           </p>
         </div>
         <Button
@@ -298,11 +299,11 @@ export default function AutomationClient() {
                   </p>
                 ))}
                 <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-                  The proposed system can connect authorized business inboxes,
-                  qualify enquiries, help book appointments and give staff a
-                  shared dashboard. Available channels depend on the
-                  client&apos;s accounts and platform permissions; it does not
-                  replace every business task.
+                  The proposed system can answer approved product, shipping and delivery
+                  questions, use connected order data for updates, qualify sales enquiries,
+                  and hand exceptions to staff through a shared dashboard. WhatsApp,
+                  Instagram, Facebook and TikTok coverage depends on the client&apos;s
+                  authorized accounts and supported integrations.
                 </p>
               </details>
               <div className="flex flex-wrap gap-2">
@@ -552,4 +553,5 @@ export default function AutomationClient() {
     </div>
   );
 }
+
 

@@ -1,3 +1,4 @@
+import { isStoreOpportunity } from "./store-focus";
 import { z } from "zod";
 export const searchSchema = z
   .object({
@@ -66,12 +67,15 @@ export function assess(input: ProspectInput, text: string) {
     ["Property enquiries", /property|real estate|homes for sale|realtor/i],
     [
       "Online sales enquiries",
-      /shop online|add to cart|product enquiry|order online/i,
+      /shop online|add to (?:cart|basket)|order online|shop now|online store|shopping cart|checkout/i,
     ],
     ["Social contact channel", /instagram|facebook|tiktok/i],
+    ["Delivery and shipping information", /shipping|delivery|dispatch|courier/i],
+    ["Returns and order support", /return policy|returns|refund|track (?:your )?order|order status/i],
+    ["Product and stock questions", /product (?:questions|details|enquir)|size guide|in stock|stock availability/i],
     [
       "Customer enquiry channel",
-      /contact us|request a quote|send (?:us )?a message/i,
+      /contact us|request a quote|send (?:us )?a message|customer support|email us|help cent(?:er|re)|frequently asked questions/i,
     ],
   ];
   if (verified)
@@ -102,6 +106,16 @@ export function assess(input: ProspectInput, text: string) {
     capabilities.unshift("WhatsApp enquiry assistant");
   if (observed.some((s) => s.label === "Social contact channel"))
     capabilities.push("Connected social inbox replies");
+  if (isStoreOpportunity(observed)) {
+    capabilities.splice(0, capabilities.length,
+      "Customer-support dashboard and staff handoff",
+      "Delivery times and shipping-charge answers from approved policies",
+      "Product questions and sales-enquiry qualification",
+      "Order updates from connected store data",
+    );
+    if (observed.some(signal => signal.label === "WhatsApp contact channel")) capabilities.push("WhatsApp support assistant");
+    if (observed.some(signal => signal.label === "Social contact channel")) capabilities.push("Eligible social inbox integrations");
+  }
   return {
     verified,
     email,
@@ -119,6 +133,15 @@ export function initialDraft(
   signals: Signal[],
 ) {
   const greeting = `Hi ${name.replace(/[\r\n]/g, " ").slice(0, 100)} team,`;
+  if (isStoreOpportunity(signals)) {
+    const channel = signals.some(signal => signal.label === "WhatsApp contact channel")
+      ? "WhatsApp and eligible connected inboxes"
+      : "your approved store and messaging channels";
+    return {
+      subject: `Customer support automation for ${name.replace(/[\r\n]/g, " ")}`.slice(0, 150),
+      body: `${greeting}\n\nI came across your online store and wanted to introduce a customer-support assistant we could build for your team.\n\nIt could answer delivery-time, shipping-charge and product questions through ${channel}, using your approved policies. With a store integration, it could also provide order updates, qualify sales enquiries and hand exceptions to your staff.\n\nA professional dashboard would let you manage conversations and review replies in one place.\n\nWould you be open to a 15-minute call to explore a suitable setup?\n\nBest regards,\nCode Nativex\ncodenativex.com\n\nIf this is not relevant, reply "not interested" and we will not follow up.`,
+    };
+  }
   const property = /real.?estate|property/i.test(category);
   const offer = property
     ? "property enquiries and viewing bookings"
@@ -156,4 +179,5 @@ export function safeError(error: unknown) {
     .replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]")
     .slice(0, 600);
 }
+
 
