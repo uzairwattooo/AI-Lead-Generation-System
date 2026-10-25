@@ -213,10 +213,12 @@ export async function saveProspect(
     const {data: refreshed,error: refreshError} = await db().from("automation_opportunities").update(fields)
       .eq("source_key",key).eq("review_status","pending").eq("source_verified",false).eq("do_not_contact",false).select("id");
     check(refreshError);
-    if(refreshed?.length) return {verified,duplicate:false,id:String(refreshed[0].id),needsReview:!row.email,reason:row.reason};
+    const refreshedRow = refreshed?.[0];
+    if (refreshedRow) return {verified,duplicate:false,id:String(refreshedRow.id),needsReview:!row.email,reason:row.reason};
   }
-  if (!saved?.length) return { verified: false, duplicate: true, id: undefined as string | undefined, needsReview: false, reason: "Already saved previously; existing approval and contact history were preserved." };
-  return { verified, duplicate: false, id: String(saved[0].id), needsReview: !verified || !row.email, reason: row.reason };
+  const savedRow = saved?.[0];
+  if (!savedRow) return { verified: false, duplicate: true, id: undefined as string | undefined, needsReview: false, reason: "Already saved previously; existing approval and contact history were preserved." };
+  return { verified, duplicate: false, id: String(savedRow.id), needsReview: !verified || !row.email, reason: row.reason };
 }
 
 export async function runDiscovery() {
