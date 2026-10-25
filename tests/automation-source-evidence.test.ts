@@ -37,3 +37,11 @@ test('no-reply contacts are not selected',()=>{const r=verifyOfficialEvidence(in
 test('contact links stay on the official domain',()=>{
  const p=readOfficialPage({...page,html:page.html+'<a href="https://evil.example/contact">Help</a><a href="/contact-us/">Contact</a>'},input.website);assert.ok(p?.contactLinks.includes('https://aurora.example/contact-us/'));assert.ok(!p?.contactLinks.some(u=>u.includes('evil.example')));
 });
+test('official policy and wholesale pages can supply a published business email',()=>{
+ const store={...page,html:page.html.replace('mailto:support@aurora.example','/contact')+'<a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/wholesale">Wholesale</a>'};
+ const parsed=readOfficialPage(store,input.website);assert.ok(parsed?.contactLinks.includes('https://aurora.example/privacy'));
+ const result=verifyOfficialEvidence(input,[store,{url:'https://aurora.example/wholesale',html:'<h1>Aurora Store</h1><p>For business inquiries email info@aurora.example. Islamabad, Pakistan.</p>'}]);assert.equal(result.email,'info@aurora.example');
+});
+test('intellectual-property boilerplate is not a real-estate opportunity signal',()=>{
+ const result=verifyOfficialEvidence(input,[{...page,html:page.html+'<p>Our intellectual-property framework protects our products.</p>'}]);assert.ok(!result.signals.some(s=>s.label==='Property enquiries'));
+});

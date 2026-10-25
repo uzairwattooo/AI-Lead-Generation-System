@@ -48,6 +48,7 @@ export async function collectOfficialEvidence(
   const seen = new Set<string>();
   const pages: OfficialPage[] = [];
   const failures: string[] = [];
+  const priority = (value: string) => /contact|support/i.test(value) ? 0 : /wholesale/i.test(value) ? 1 : /privacy|terms|refund|returns/i.test(value) ? 2 : 3;
   // At most five official pages; no paid model calls or unrestricted crawling.
   while (queue.length && seen.size < 5 && !signal.aborted) {
     const url = queue.shift();
@@ -58,6 +59,7 @@ export async function collectOfficialEvidence(
       pages.push(page);
       const parsed = readOfficialPage(page, input.website);
       for (const link of parsed?.contactLinks || []) if (!seen.has(link) && !queue.includes(link)) queue.push(link);
+      queue.sort((a,b) => priority(a) - priority(b));
       const result = verifyOfficialEvidence(input, pages);
       if (result.verified && result.email) return result;
     } catch { failures.push(url); }

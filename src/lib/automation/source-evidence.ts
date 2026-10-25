@@ -29,7 +29,7 @@ export function readOfficialPage(page: OfficialPage, website: string) {
   const text = ($.text() + " " + publishedLinks.map(h => h.replace(/^mailto:/i, "").split("?")[0]).join(" ")).replace(/\s+/g, " ").trim();
   if (text.length < 30 || (text.length < 1200 && /checking your browser|verify you are human|request is being verified|just a moment|access denied|captcha/i.test(text))) return null;
   const contacts = [...new Set((text.match(emailPattern) || []).map(e => e.toLowerCase()))];
-  const contactLinks = links.filter(h => /contact|support|help|about/i.test(h)).map(h => officialUrl(h, page.url)).filter((u): u is string => Boolean(u));
+  const contactLinks = links.filter(h => /contact|support|help|about|privacy|terms|refund|returns|wholesale/i.test(h)).map(h => officialUrl(h, page.url)).filter((u): u is string => Boolean(u));
   return { url: page.url, text, contacts, contactLinks };
 }
 
@@ -57,7 +57,7 @@ export function verifyOfficialEvidence(input: ProspectInput, pages: OfficialPage
     if (!identity) reasons.push("Business identity was not confirmed in the official page text.");
     if (!city) reasons.push("The requested city was not confirmed on the official pages.");
     if (!store) reasons.push("Online-sales plus customer-contact evidence is incomplete.");
-    if (!email) reasons.push("No suitable published email on the business's own domain was found. External email addresses need manual contact review.");
+    if (!email) reasons.push("No suitable published business email was found in the pages checked. Further contact review is needed; this does not mean the business has no email.");
   }
   return {
     verified, email: verified ? email : null, excerpt, source_url: candidate.source_url,

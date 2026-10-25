@@ -64,7 +64,7 @@ export function assess(input: ProspectInput, text: string) {
       "Appointment or viewing enquiries",
       /book.{0,25}(appointment|viewing|consultation)|schedule.{0,25}(viewing|appointment|consultation)/i,
     ],
-    ["Property enquiries", /property|real estate|homes for sale|realtor/i],
+    ["Property enquiries", /property\s+(?:enquir|listing|viewing|management|for sale)|real[ -]?estate|homes for sale|realtor/i],
     [
       "Online sales enquiries",
       /shop online|add to (?:cart|basket)|order online|shop now|online store|shopping cart|checkout/i,
