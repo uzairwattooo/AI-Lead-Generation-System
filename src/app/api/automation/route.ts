@@ -86,20 +86,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ saved: true, id: data.id });
     }
     if (body.action === "retry_search") {
-      const { data, error } = await createSupabaseAdminClient()
-        .from("automation_discovery_jobs")
-        .update({
-          status: "queued",
-          error: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", body.id)
-        .eq("status", "failed")
-        .select("id");
-      if (error) throw new Error(error.message);
-      if (!data?.length)
-        return apiError("Only a failed search can be retried.", 409);
-      return NextResponse.json({ saved: true });
+      const client = createSupabaseAdminClient();
+      const {data: previous,error: readError} = await client.from("automation_discovery_jobs").select("*").eq("id",body.id).single();
+      if(readError) throw new Error(readError.message);
+      if(!["failed","completed"].includes(previous.status)) return apiError("Wait for the current discovery run to finish.",409);
+      const {count,error: countError} = await client.from("automation_discovery_jobs").select("id",{count:"exact",head:true}).in("status",["queued","running"]);
+      if(countError) throw new Error(countError.message);
+      if((count||0)>=5)return apiError("Finish the current discovery jobs before adding more.",409);
+      const {data,error} = await client.from("automation_discovery_jobs").insert({
+        category:previous.category,city:previous.city,country:previous.country,region:previous.region||"",kind:previous.kind,
+        requested_count:previous.requested_count,created_by:auth.email,
+      }).select("id").single();
+      if(error)throw new Error(error.message);
+      return NextResponse.json({saved:true,id:data.id});
     }
     if (body.action === "import")
       return NextResponse.json(await saveProspect(body.input, "business"));
@@ -121,4 +120,5 @@ export async function POST(request: Request) {
     return handleRouteError(e);
   }
 }
+
 
