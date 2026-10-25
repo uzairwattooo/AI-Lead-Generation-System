@@ -41,9 +41,10 @@ export default function AutomationClient() {
   });
   const action = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      apiSend("/api/automation", "POST", payload),
-    onSuccess: () => {
-      toast.success("Saved");
+      apiSend<{message?: string; verified?: boolean; emailFound?: boolean}>("/api/automation", "POST", payload),
+    onSuccess: (result) => {
+      if (result.verified === false || result.emailFound === false) toast.warning(result.message || "Still needs source/contact review.");
+      else toast.success(result.message || "Saved");
       void client.invalidateQueries({ queryKey: ["automation-opportunities"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -239,7 +240,7 @@ export default function AutomationClient() {
                   </p>
                   <p className="mt-1 break-all text-sm">
                     {p.email ||
-                      "Published email not found — needs contact review"}
+                      "Email not verified yet — recheck source/contact"}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -250,7 +251,7 @@ export default function AutomationClient() {
                   </Badge>
                   <Badge tone="neutral">
                     {p.kind === "business"
-                      ? `Potential fit ${p.score}/100`
+                      ? p.source_verified ? `Potential fit ${p.score}/100` : "Fit awaiting verification"
                       : "Public request — review intent"}
                   </Badge>
                   <Badge tone={p.do_not_contact ? "danger" : "neutral"}>
@@ -260,6 +261,13 @@ export default function AutomationClient() {
               </div>
               <p className="text-xs text-[var(--app-text-muted)]">{p.reason}</p>
               <div className="flex flex-wrap gap-2">
+                {p.kind === "business" && p.review_status !== "rejected" && !p.do_not_contact && (!p.source_verified || !p.email) ? (
+                  <Button size="sm" variant="secondary" disabled={action.isPending}
+                    loading={action.isPending && action.variables?.action === "recheck_source" && action.variables?.id === p.id}
+                    onClick={() => action.mutate({action:"recheck_source",id:p.id})}>
+                    Recheck source/contact
+                  </Button>
+                ) : null}
                 {p.capabilities.map((c) => (
                   <span
                     key={c}
@@ -534,6 +542,7 @@ export default function AutomationClient() {
     </div>
   );
 }
+
 
 
 

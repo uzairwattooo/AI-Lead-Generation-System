@@ -1,4 +1,6 @@
 import { citationKey, discoveryCandidate, discoveryLocationMatches, type DiscoveryDiagnostic } from "@/lib/automation/discovery-progress";
+import { readOfficialPage, verifyOfficialEvidence } from "@/lib/automation/source-evidence";
+import { collectOfficialEvidence, fetchOfficialPage } from "./official-source";
 import { isOnlineStoreSearch, isStoreOpportunity } from "@/lib/automation/store-focus";
 import "server-only";
 import { load } from "cheerio";
@@ -150,7 +152,15 @@ export async function saveProspect(
 ) {
   let html = "";
   let sourceError = "";
-  try { html = await sourceText(input.source_url, signal); }
+  let finalSourceUrl = input.source_url;
+  try {
+    if (kind === "business") {
+      const deadline = signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000);
+      const page = await fetchOfficialPage(input.source_url, input.website, deadline);
+      html = page.html;
+      finalSourceUrl = page.url;
+    } else html = await sourceText(input.source_url, signal);
+  }
   catch (error) {
     if (signal?.aborted) throw new Error("Discovery deadline reached during source verification.");
     sourceError = safeError(error);
@@ -166,10 +176,19 @@ export async function saveProspect(
       ),
     )
     .join(" ");
-  const text = ($.text() + " " + publicLinks.replace(/mailto:/gi, " "))
+  let text = ($.text() + " " + publicLinks.replace(/mailto:/gi, " "))
     .replace(/\s+/g, " ")
     .trim();
-  const result = assess(input, text);
+  if (kind === "business") text = readOfficialPage({url: finalSourceUrl, html}, input.website)?.text || "";
+  let result = assess(input, text);
+  if (kind === "business" && (!result.verified || !result.email)) {
+    // Ground the excerpt/contact in the actual page, rather than an AI summary.
+    const evidence = verifyOfficialEvidence(input, [{url: finalSourceUrl, html}]);
+    if (evidence.verified) {
+      result = evidence;
+      input = {...input, excerpt: evidence.excerpt, email: evidence.email, source_url: evidence.source_url};
+    }
+  }
   const isBusiness = kind === "business";
   let verified = isBusiness
     ? result.verified && cited
@@ -219,6 +238,27 @@ export async function saveProspect(
   const savedRow = saved?.[0];
   if (!savedRow) return { verified: false, duplicate: true, id: undefined as string | undefined, needsReview: false, reason: "Already saved previously; existing approval and contact history were preserved." };
   return { verified, duplicate: false, id: String(savedRow.id), needsReview: !verified || !row.email, reason: row.reason };
+}
+
+export async function recheckOpportunity(id: string) {
+  const p = await readProspect(id);
+  if (p.kind !== "business" || p.do_not_contact || p.review_status === "rejected")
+    throw new Error("Only an active business awaiting source/contact verification can be rechecked.");
+  if (p.source_verified && p.email) return {saved:true,verified:true,emailFound:true,message:"Source and published email are already verified."};
+  const client = db();
+  const {data: outbox,error: outboxError} = await client.from("automation_outbox").select("id").eq("opportunity_id",id).limit(1);
+  check(outboxError);
+  if (outbox?.length) throw new Error("This opportunity already has email history. Contact changes require manual review; existing drafts and sends were preserved.");
+  const input = prospectSchema.parse({company_name:p.company_name,category:p.category,city:p.city,country:p.country,website:p.website,source_url:p.source_url,excerpt:p.excerpt,email:p.email});
+  const evidence = await collectOfficialEvidence(input);
+  const {data: updated,error} = await client.from("automation_opportunities").update({
+    source_verified:evidence.verified,email:evidence.email,source_url:evidence.source_url,
+    excerpt:evidence.excerpt || p.excerpt,signals:evidence.signals,capabilities:evidence.capabilities,
+    score:evidence.score,reason:evidence.reason,updated_at:timestamp(),
+  }).eq("id",id).eq("updated_at",p.updated_at).eq("review_status",p.review_status).eq("do_not_contact",false).select("id").maybeSingle();
+  check(error);
+  if (!updated) throw new Error("Opportunity changed during verification. Refresh and check its current state.");
+  return {saved:true,verified:evidence.verified,emailFound:Boolean(evidence.email),message:evidence.verified && evidence.email ? "Official source and published email verified. You can now prepare the email after approval." : evidence.reason};
 }
 
 export async function runDiscovery() {
@@ -739,6 +779,7 @@ export async function receiveReply(value: {
   check(done);
   return { saved: true, intent, needsReview: true };
 }
+
 
 
 
