@@ -9,6 +9,7 @@ import {
   editEmail,
   listAutomation,
   saveProspect,
+  recheckOpportunity,
 } from "@/server/automation/service";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,6 +17,7 @@ const uuid = z.string().uuid();
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("search"), input: searchSchema }).strict(),
   z.object({ action: z.literal("retry_search"), id: uuid }).strict(),
+  z.object({ action: z.literal("recheck_source"), id: uuid }).strict(),
   z.object({ action: z.literal("import"), input: prospectSchema }).strict(),
   z
     .object({
@@ -100,6 +102,8 @@ export async function POST(request: Request) {
       if(error)throw new Error(error.message);
       return NextResponse.json({saved:true,id:data.id});
     }
+    if (body.action === "recheck_source")
+      return NextResponse.json(await recheckOpportunity(body.id));
     if (body.action === "import")
       return NextResponse.json(await saveProspect(body.input, "business"));
     if (body.action === "save" || body.action === "approve_send") {
@@ -120,5 +124,6 @@ export async function POST(request: Request) {
     return handleRouteError(e);
   }
 }
+
 
 
