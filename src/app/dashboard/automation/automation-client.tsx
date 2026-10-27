@@ -1,5 +1,7 @@
 "use client";
 import { AutomationJobSummary } from "@/components/discovery/automation-job-progress";
+import { BulkOpportunityActions } from "@/components/discovery/bulk-opportunity-actions";
+import { MAX_BULK_OPPORTUNITIES } from "@/lib/automation/bulk-opportunities";
 import type { DiscoveryJob } from "@/lib/automation/discovery-progress";
 import { AutomationDiscoveryForm } from "@/components/discovery/automation-discovery-form";
 import { useState } from "react";
@@ -34,6 +36,8 @@ export default function AutomationClient() {
   const [tab, setTab] = useState("pending");
   const [filter, setFilter] = useState("");
   const [editor, setEditor] = useState<Outbox | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const query = useQuery({
     queryKey: ["automation-opportunities"],
     queryFn: ({ signal }) => apiGet<Data>("/api/automation", signal),
@@ -59,6 +63,7 @@ export default function AutomationClient() {
         .toLowerCase()
         .includes(filter.toLowerCase()),
   );
+  const locked = action.isPending || bulkBusy;
   const submitImport = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const f = new FormData(event.currentTarget);
@@ -170,7 +175,7 @@ export default function AutomationClient() {
               required
             />
           </label>
-          <Button type="submit" loading={action.isPending}>
+          <Button type="submit" disabled={locked} loading={action.isPending}>
             Check source &amp; add business
           </Button>
         </form>
@@ -194,7 +199,8 @@ export default function AutomationClient() {
               key={id}
               variant={tab === id ? "primary" : "secondary"}
               size="sm"
-              onClick={() => setTab(id)}
+              disabled={bulkBusy}
+              onClick={() => {setTab(id);setSelectedIds([]);}}
             >
               {label}
             </Button>
@@ -205,7 +211,8 @@ export default function AutomationClient() {
           <input
             className={inputClass}
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            disabled={bulkBusy}
+            onChange={(e) => {setFilter(e.target.value);setSelectedIds([]);}}
             placeholder="Business, city or email"
           />
         </label>
@@ -216,6 +223,11 @@ export default function AutomationClient() {
             ? `Updated ${new Date(query.data.updatedAt).toLocaleTimeString()}`
             : "Loading live data…"}
         </p>
+        {tab !== "requests" ? (
+          <BulkOpportunityActions rows={rows} selectedIds={selectedIds} disabled={locked}
+            onSelect={setSelectedIds} onBusyChange={setBulkBusy}
+            onRefresh={()=>{void client.invalidateQueries({queryKey:["automation-opportunities"]});}} />
+        ) : null}
         {query.isPending ? (
           <p>Loading opportunities…</p>
         ) : !query.isError && !rows.length ? (
@@ -235,6 +247,15 @@ export default function AutomationClient() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h2 className="font-semibold">{p.company_name}</h2>
+                  {p.kind === "business" && !p.do_not_contact && ["pending","approved"].includes(p.review_status) ? (
+                    <label className="my-2 flex items-center gap-2 text-xs">
+                      <input type="checkbox" aria-label={`Select ${p.company_name}`}
+                        checked={selectedIds.includes(p.id)}
+                        disabled={locked || (!selectedIds.includes(p.id) && selectedIds.length >= MAX_BULK_OPPORTUNITIES)}
+                        onChange={event=>{const checked=event.target.checked;setSelectedIds(previous=>checked ? [...new Set([...previous,p.id])].slice(0,MAX_BULK_OPPORTUNITIES) : previous.filter(id=>id!==p.id));}} />
+                      Select business
+                    </label>
+                  ) : null}
                   <p className="text-xs text-[var(--app-text-muted)]">
                     {p.category} · {p.city}, {p.country}
                   </p>
@@ -262,7 +283,7 @@ export default function AutomationClient() {
               <p className="text-xs text-[var(--app-text-muted)]">{p.reason}</p>
               <div className="flex flex-wrap gap-2">
                 {p.kind === "business" && p.review_status !== "rejected" && !p.do_not_contact && (!p.source_verified || !p.email) ? (
-                  <Button size="sm" variant="secondary" disabled={action.isPending}
+                  <Button size="sm" variant="secondary" disabled={locked}
                     loading={action.isPending && action.variables?.action === "recheck_source" && action.variables?.id === p.id}
                     onClick={() => action.mutate({action:"recheck_source",id:p.id})}>
                     Recheck source/contact
@@ -310,7 +331,7 @@ export default function AutomationClient() {
                 {p.review_status !== "approved" ? (
                   <Button
                     size="sm"
-                    disabled={action.isPending || p.do_not_contact}
+                    disabled={locked || p.do_not_contact}
                     onClick={() =>
                       action.mutate({ action: "approve", id: p.id })
                     }
@@ -322,7 +343,7 @@ export default function AutomationClient() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={action.isPending}
+                    disabled={locked}
                     onClick={() =>
                       action.mutate({ action: "reject", id: p.id })
                     }
@@ -335,7 +356,7 @@ export default function AutomationClient() {
                     size="sm"
                     variant="secondary"
                     disabled={
-                      action.isPending ||
+                      locked ||
                       !p.email ||
                       !p.source_verified ||
                       p.do_not_contact
@@ -351,7 +372,7 @@ export default function AutomationClient() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={action.isPending}
+                    disabled={locked}
                     onClick={() => action.mutate({ action: "stop", id: p.id })}
                   >
                     Stop contact
@@ -422,7 +443,7 @@ export default function AutomationClient() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={action.isPending}
+                  disabled={locked}
                   onClick={() =>
                     action.mutate({ action: "retry_search", id: j.id })
                   }
@@ -496,7 +517,7 @@ export default function AutomationClient() {
               <>
                 <Button
                   variant="secondary"
-                  disabled={action.isPending}
+                  disabled={locked}
                   onClick={() =>
                     action.mutate(
                       {
@@ -514,7 +535,7 @@ export default function AutomationClient() {
                 </Button>
                 <Button
                   disabled={
-                    action.isPending ||
+                    locked ||
                     editor.subject !==
                       query.data?.outbox.find((o) => o.id === editor.id)
                         ?.subject ||
@@ -542,6 +563,7 @@ export default function AutomationClient() {
     </div>
   );
 }
+
 
 
 

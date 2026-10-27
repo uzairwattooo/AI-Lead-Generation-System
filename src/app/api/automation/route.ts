@@ -21,7 +21,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("import"), input: prospectSchema }).strict(),
   z
     .object({
-      action: z.enum(["approve", "reject", "stop", "prepare"]),
+      action: z.enum(["approve", "approve_verified", "reject", "stop", "prepare"]),
       id: uuid,
     })
     .strict(),
@@ -124,6 +124,7 @@ export async function POST(request: Request) {
     return handleRouteError(e);
   }
 }
+
 
 
 

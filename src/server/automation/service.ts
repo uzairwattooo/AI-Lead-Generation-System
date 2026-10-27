@@ -1,4 +1,5 @@
 import { citationKey, discoveryCandidate, discoveryLocationMatches, type DiscoveryDiagnostic } from "@/lib/automation/discovery-progress";
+import { bulkBlockReason } from "@/lib/automation/bulk-opportunities";
 import { readOfficialPage, verifyOfficialEvidence } from "@/lib/automation/source-evidence";
 import { collectOfficialEvidence, fetchOfficialPage } from "./official-source";
 import { isOnlineStoreSearch, isStoreOpportunity } from "@/lib/automation/store-focus";
@@ -407,10 +408,25 @@ export async function runDiscovery() {
 }
 export async function changeOpportunity(
   id: string,
-  action: "approve" | "reject" | "stop" | "prepare",
+  action: "approve" | "approve_verified" | "reject" | "stop" | "prepare",
 ) {
   const p = await readProspect(id);
   const client = db();
+  if (action === "approve_verified") {
+    const reason = bulkBlockReason(p, action);
+    if (reason) throw new Error(reason);
+    const existing = await eligible({...p,review_status:"approved"});
+    if (existing.some(x=>x.gmail_message_id || x.first_outreach_at || x.outreach_send_key))
+      throw new Error("This email was already contacted or claimed in the website campaign. Review the existing lead instead.");
+    const {data,error} = await client.from("automation_opportunities")
+      .update({review_status:"approved",updated_at:timestamp()})
+      .eq("id",id).eq("updated_at",p.updated_at).eq("review_status","pending")
+      .eq("source_verified",true).eq("do_not_contact",false).eq("email",p.email)
+      .select("id").maybeSingle();
+    check(error);
+    if (!data) throw new Error("Opportunity changed during approval. Refresh and review its current state.");
+    return {saved:true,message:"Verified business approved. Review its email draft separately before sending."};
+  }
   if (action === "prepare") {
     const prior = await eligible(p);
     if (
@@ -779,6 +795,7 @@ export async function receiveReply(value: {
   check(done);
   return { saved: true, intent, needsReview: true };
 }
+
 
 
 
