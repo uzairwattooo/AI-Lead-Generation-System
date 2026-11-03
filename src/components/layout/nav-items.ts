@@ -97,6 +97,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Engagement",
     items: [
       {
+        href: "/dashboard/apply-today",
+        label: "Apply Today",
+        icon: ListChecks,
+        description: "Review projects and track proposals",
+      },
+      {
         href: "/dashboard/outreach",
         label: "Outreach",
         icon: Mail,
@@ -140,6 +146,7 @@ export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
 /** Human-readable segment labels used to build breadcrumbs. */
 export const SEGMENT_LABELS: Record<string, string> = {
   dashboard: "Overview",
+  "apply-today": "Apply Today",
   generate: "Generate Leads",
   requests: "Lead Requests",
   leads: "New Leads",
