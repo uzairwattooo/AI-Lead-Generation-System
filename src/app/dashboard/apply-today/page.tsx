@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { stages, type Stage } from "@/lib/apply-today";
 
-const labels = { shortlisted: "Shortlisted", applied: "Applied", reply: "Replies", call: "Calls", paid: "Paid" };
+const labels = { shortlisted: "Shortlisted", applied: "Applied", reply: "Replies", call: "Calls", paid: "Paid", rejected: "Rejected" };
 type Draft = { stage: Stage; requirement: string; fit: string; portfolio_url: string; proposal: string };
 type Project = { id: string; title: string; sourceUrl: string | null; application: Draft | null };
 const empty: Draft = {stage: "shortlisted", requirement: "", fit: "", portfolio_url: "", proposal: ""};
@@ -60,6 +60,7 @@ export default function ApplyToday() {
       setSelected(updated);
       setDraft(data.application);
       setTab(stage);
+      if (stage === "rejected") setSelected(null);
       setNotice("Application saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save application.");
@@ -100,13 +101,17 @@ export default function ApplyToday() {
           </div>
           <p className={muted}>Apply on the original platform. Saving a status does not send a proposal or email.</p>
           <label className="block space-y-1"><span>Application stage</span><select className={input} value={draft.stage} onChange={e => setDraft({...draft, stage: e.target.value as Stage})}>
-            {stages.map(stage => <option key={stage} value={stage}>{labels[stage]}</option>)}
+            {stages.filter(stage => stage !== "rejected" || draft.stage === "rejected").map(stage => <option key={stage} value={stage}>{labels[stage]}</option>)}
           </select></label>
-          <Button disabled={busy || !selected.sourceUrl} onClick={() => void save(draft.stage)}>{draft.stage === "applied" ? "Mark as applied" : "Save application"}</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={busy || !selected.sourceUrl || draft.stage === "rejected"} onClick={() => void save(draft.stage)}>{draft.stage === "applied" ? "Mark as applied" : "Save application"}</Button>
+            {(!selected.application || selected.application.stage === "shortlisted") && <Button variant="danger" disabled={busy} onClick={() => void save("rejected")}>Reject project</Button>}
+            {selected.application?.stage === "rejected" && <Button variant="secondary" disabled={busy || !selected.sourceUrl} onClick={() => void save("shortlisted")}>Restore to shortlist</Button>}
+          </div>
         </div>
       </div>
     </> : <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">{stages.map(stage => <div key={stage} className={panel}><p className={muted}>{labels[stage]}</p><p className="text-xl font-semibold">{projects ? projects.filter(row => row.application?.stage === stage).length : "—"}</p></div>)}</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{stages.map(stage => <div key={stage} className={panel}><p className={muted}>{labels[stage]}</p><p className="text-xl font-semibold">{projects ? projects.filter(row => row.application?.stage === stage).length : "—"}</p></div>)}</div>
       <div className="flex flex-wrap gap-2" aria-label="Application filters">
         <Button variant={tab === "new" ? "primary" : "secondary"} aria-pressed={tab === "new"} onClick={() => setTab("new")}>New projects</Button>
         {stages.map(stage => <Button key={stage} variant={tab === stage ? "primary" : "secondary"} aria-pressed={tab === stage} onClick={() => setTab(stage)}>{labels[stage]}</Button>)}

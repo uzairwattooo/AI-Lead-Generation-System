@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     const parsed = input.parse(await request.json());
     const project = await candidates().eq("id", parsed.candidate_id).maybeSingle();
     if (project.error) return apiError("Could not verify the discovery record.", 500);
-    if (!project.data || !safeProjectUrl(project.data.source_url))
+    if (!project.data || (parsed.stage !== "rejected" && !safeProjectUrl(project.data.source_url)))
       return apiError("Select an available job-platform project with an original post.", 404);
     const { data, error } = await createSupabaseAdminClient().from("project_applications")
       .upsert({ ...parsed, updated_at: new Date().toISOString() }).select("*").single();

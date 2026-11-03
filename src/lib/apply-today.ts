@@ -1,4 +1,4 @@
-export const stages = ["shortlisted", "applied", "reply", "call", "paid"] as const;
+export const stages = ["shortlisted", "applied", "reply", "call", "paid", "rejected"] as const;
 export type Stage = typeof stages[number];
 
 export function safeProjectUrl(value: unknown): string | null {
