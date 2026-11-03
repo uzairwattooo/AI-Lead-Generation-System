@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { stages, type Stage } from "@/lib/apply-today";
 
-const labels = { shortlisted: "Shortlisted", applied: "Applied", reply: "Replies", call: "Calls", paid: "Paid", rejected: "Rejected" };
+const labels = { shortlisted: "Shortlisted", ready: "Ready to apply", applied: "Applied", reply: "Replies", call: "Calls", paid: "Paid", rejected: "Rejected" };
 type Draft = { stage: Stage; requirement: string; fit: string; portfolio_url: string; proposal: string };
 type Project = { id: string; title: string; sourceUrl: string | null; application: Draft | null };
 const empty: Draft = {stage: "shortlisted", requirement: "", fit: "", portfolio_url: "", proposal: ""};
@@ -42,6 +42,25 @@ export default function ApplyToday() {
     setDraft(project.application ?? empty);
     setNotice("");
     setError("");
+  }
+
+  async function prepare() {
+    if (!selected) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const data = await readResponse(await fetch("/api/apply-today", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({action:"prepare", candidate_id:selected.id}),
+      }));
+      if (data.state === "draft_ready") {
+        setDraft(current => ({...current, ...data.draft}));
+        setNotice("Draft prepared. Verify eligibility, budget and Connects before applying, then save your draft.");
+      } else setNotice(data.reason);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not prepare the proposal.");
+    } finally { setBusy(false); }
   }
 
   async function save(stage: Stage) {
@@ -93,6 +112,7 @@ export default function ApplyToday() {
         <div className={panel + " space-y-4"}>
           <label className="block space-y-1"><span className="font-semibold">Proposal draft</span><textarea className={input} rows={12} maxLength={6000} value={draft.proposal} onChange={e => field("proposal", e.target.value)} /></label>
           <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" disabled={busy || !selected.sourceUrl || !!(draft.proposal.trim() || draft.requirement.trim() || draft.fit.trim())} onClick={() => void prepare()}>Prepare proposal</Button>
             <Button variant="secondary" disabled={!draft.requirement.trim() || !!draft.proposal.trim()} onClick={() => field("proposal", ["Hi,", "I can help with the following: " + draft.requirement.trim(), draft.fit.trim(), draft.portfolio_url ? "Relevant sample: " + draft.portfolio_url : "", "Would you be open to discussing the scope and timeline?"].filter(Boolean).join("\n\n"))}>Start draft</Button>
             <Button variant="secondary" disabled={!draft.proposal.trim()} onClick={async () => {
               try { await navigator.clipboard.writeText(draft.proposal); setNotice("Proposal copied."); }
@@ -105,13 +125,13 @@ export default function ApplyToday() {
           </select></label>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy || !selected.sourceUrl || draft.stage === "rejected"} onClick={() => void save(draft.stage)}>{draft.stage === "applied" ? "Mark as applied" : "Save application"}</Button>
-            {(!selected.application || selected.application.stage === "shortlisted") && <Button variant="danger" disabled={busy} onClick={() => void save("rejected")}>Reject project</Button>}
+            {(!selected.application || ["shortlisted", "ready"].includes(selected.application.stage)) && <Button variant="danger" disabled={busy} onClick={() => void save("rejected")}>Reject project</Button>}
             {selected.application?.stage === "rejected" && <Button variant="secondary" disabled={busy || !selected.sourceUrl} onClick={() => void save("shortlisted")}>Restore to shortlist</Button>}
           </div>
         </div>
       </div>
     </> : <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">{stages.map(stage => <div key={stage} className={panel}><p className={muted}>{labels[stage]}</p><p className="text-xl font-semibold">{projects ? projects.filter(row => row.application?.stage === stage).length : "—"}</p></div>)}</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-7">{stages.map(stage => <div key={stage} className={panel}><p className={muted}>{labels[stage]}</p><p className="text-xl font-semibold">{projects ? projects.filter(row => row.application?.stage === stage).length : "—"}</p></div>)}</div>
       <div className="flex flex-wrap gap-2" aria-label="Application filters">
         <Button variant={tab === "new" ? "primary" : "secondary"} aria-pressed={tab === "new"} onClick={() => setTab("new")}>New projects</Button>
         {stages.map(stage => <Button key={stage} variant={tab === stage ? "primary" : "secondary"} aria-pressed={tab === stage} onClick={() => setTab(stage)}>{labels[stage]}</Button>)}

@@ -5,6 +5,8 @@ import { isDemoMode } from "@/server/env";
 import { createSupabaseAdminClient } from "@/server/supabase-admin";
 import { safeProjectUrl, stages } from "@/lib/apply-today";
 
+import { prepareProject } from "@/server/apply-today-prepare";
+
 const input = z.object({
   candidate_id: z.string().uuid(),
   stage: z.enum(stages),
@@ -56,7 +58,14 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
   if (isDemoMode()) return apiError("Apply Today requires live database mode.", 409);
   try {
-    const parsed = input.parse(await request.json());
+    const body = await request.json();
+    if (body?.action === "prepare") {
+      const id = z.string().uuid().parse(body.candidate_id);
+      const {data, error} = await candidates().select("company_name,source_url,raw_payload").eq("id", id).maybeSingle();
+      if (error || !data) return apiError("Could not load the saved project.", 404);
+      return NextResponse.json(await prepareProject(data));
+    }
+    const parsed = input.parse(body);
     const project = await candidates().eq("id", parsed.candidate_id).maybeSingle();
     if (project.error) return apiError("Could not verify the discovery record.", 500);
     if (!project.data || (parsed.stage !== "rejected" && !safeProjectUrl(project.data.source_url)))
